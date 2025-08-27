@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarron Tan - 金融 MA | Web3 探索者</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    
+    <!-- Firebase SDKs (Compat for browser global API) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    
+    <!-- Babel Standalone for JSX transpilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-accent: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --shadow-glow: 0 0 40px rgba(79, 172, 254, 0.3);
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+        
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .gradient-text {
+            background: var(--gradient-accent);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .floating-animation {
+            animation: floating 6s ease-in-out infinite;
+        }
+        
+        .glow-effect {
+            box-shadow: var(--shadow-glow);
+        }
+        
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: #4facfe;
+            border-radius: 50%;
+            opacity: 0.7;
+            animation: particle-float 8s linear infinite;
+        }
+        
+        @keyframes floating {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        @keyframes particle-float {
+            0% {
+                transform: translateY(100vh) translateX(0px);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.7;
+            }
+            90% {
+                opacity: 0.7;
+            }
+            100% {
+                transform: translateY(-100vh) translateX(100px);
+                opacity: 0;
+            }
+        }
+        
+        .typing-cursor::after {
+            content: '|';
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        .skill-badge {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.1) 0%, rgba(0, 242, 254, 0.1) 100%);
+            border: 1px solid rgba(79, 172, 254, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .skill-badge:hover {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.2) 0%, rgba(0, 242, 254, 0.2) 100%);
+            border-color: rgba(79, 172, 254, 0.6);
+            transform: translateY(-2px);
+        }
+
+        .page-transition {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 relative">
+    
+    <!-- Animated Background Particles -->
+    <div class="fixed inset-0 pointer-events-none z-0">
+        <div class="particle" style="left: 10%; animation-delay: 0s;"></div>
+        <div class="particle" style="left: 20%; animation-delay: 1s;"></div>
+        <div class="particle" style="left: 30%; animation-delay: 2s;"></div>
+        <div class="particle" style="left: 40%; animation-delay: 3s;"></div>
+        <div class="particle" style="left: 50%; animation-delay: 4s;"></div>
+        <div class="particle" style="left: 60%; animation-delay: 5s;"></div>
+        <div class="particle" style="left: 70%; animation-delay: 6s;"></div>
+        <div class="particle" style="left: 80%; animation-delay: 7s;"></div>
+        <div class="particle" style="left: 90%; animation-delay: 8s;"></div>
+    </div>
+
+    <!-- Background Gradient -->
+    <div class="fixed inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 z-0"></div>
+    <div class="fixed inset-0 bg-gradient-to-tr from-blue-900/20 via-transparent to-purple-900/20 z-0"></div>
+
+    <!-- React App Mount Point -->
+    <div id="root" class="relative z-10"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        
+        // --- Data ---
+        const profileData = {
+          avatarVideoUrl: 'https://res.cloudinary.com/donjhjuiz/video/upload/v1756266819/YJ_Avatar_Video_tbxoiv.mp4',
+          name: 'Jarron Tan',
+          title: '金融 MA | Web3 探索者',
+          subtitle: 'Bridging TradFi & DeFi',
+          bio: "來自傳統金融領域的 Management Associate，正滿懷熱情地探索 Web3 與加密貨幣的無限可能。專注於連結傳統金融與去中心化金融的創新橋樑。",
+          secondaryBio: "相信去中心化金融將重塑未來金融生態。期待與業界先進交流合作，共同推動金融科技的革新發展。",
+          skills: ['DeFi', 'Transaction Analysis', 'Financial Analysis', 'Risk Management', 'Blockchain', 'Process Optimization'],
+          socials: {
+            twitter: 'https://x.com',
+            telegram: 'https://telegram.org',
+            linkedin: 'https://www.linkedin.com/in/yijiet96/',
+            discord: 'https://discord.com',
+          },
+          linkedinUrl: 'https://www.linkedin.com/in/yijiet96/',
+          email: 'yijiet96@gmail.com',
+          pdfResumeUrl: 'https://res.cloudinary.com/donjhjuiz/image/upload/v1756268009/Jarron_Resume.pdf'
+        };
+
+        // Firebase 配置 - 請替換為您的實際配置
+        // Firebase 配置 - 請替換為您的實際配置
+        const firebaseConfig = {
+            apiKey: "AIzaSyBLPFbVzWLdhtTZe_IDFXP8jo4zeK1rvAE",
+            authDomain: "yj9626-5ad19.firebaseapp.com",
+            projectId: "yj9626-5ad19",
+            storageBucket: "yj9626-5ad19.firebasestorage.app",
+            messagingSenderId: "213785276149",
+            appId: "1:213785276149:web:a88cda64372d538a4dfbc",
+            measurementId: "G-12F4YCXJ5M"
+            };
+
+        // 應用 ID - 用於 Firestore 資料路徑（可與 projectId 一致）
+        const appId = "yj9626-5ad19";
+
+        // 初始認證令牌（可選）
+        const initialAuthToken = null;
+        
+        const resumeData = {
+            experience: [
+                { id: 1, title: '儲備幹部 (MA)', company: 'KGI Bank (凱基銀行)', period: '2024/07 - 至今', description: '管理數位金融產品的支付營運，包含跨境支付解決方案。主導跨團隊合作，執行高影響力的戰略專案，並透過交易分析與數據解讀來優化客戶服務流程。' },
+                { id: 2, title: '專案管理儲備幹部', company: 'Sinyi Realty Inc. (信義房屋)', period: '2023/08 - 2024/06', description: '支援企業永續發展與治理的關鍵策略，包含道瓊永續指數 (DJSI) 專案與證交所公司治理評鑑，協助公司達到前 5% 的排名。' }
+            ],
+            education: [
+                { id: 1, degree: '會計學碩士', school: 'National Chengchi University (NCCU)', period: '2020/09 - 2023/07' },
+                { id: 2, degree: '法學學士', school: 'National Chengchi University (NCCU)', period: '2016/09 - 2020/07' }
+            ],
+            skills: [
+                { id: 1, category: '商業營運與策略', items: ['商業規劃', '交易分析', '競爭者分析', '跨團隊協作', '流程優化'] },
+                { id: 2, category: '技術能力', items: ['Microsoft Excel (VLOOKUP, Pivot Tables)', 'Google Suits', 'PowerPoint', 'Python', 'HTML', 'SQL (基礎)', 'Figma'] },
+                { id: 3, category: '語言能力', items: ['中文 (母語)', '粵語 (母語)', '馬來語 (流利)', '英文 (TOEIC 940)', '閩南語 (會話)'] }
+            ]
+        };
+
+        // --- Social Icons ---
+        const XIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>);
+        const TelegramIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></svg>);
+        const LinkedinIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/></svg>);
+        const DiscordIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 192"><path d="M216.856 16.597s-18.256-11.22-42.304-14.426c-2.134.64-4.268 1.494-6.28 2.56-16.597 8.746-29.284 20.266-39.253 33.493-20.053-4.48-39.253-4.48-58.33.213-10.08-13.227-22.778-24.747-39.364-33.493-2.012-1.066-4.146-1.92-6.28-2.56C37.4 5.377 19.144 16.597 19.144 16.597s-15.53 51.072-15.53 114.986c0 13.44 3.2 26.24 8.746 38.186 19.144 14.426 40.73 14.315 40.73 14.315l6.068-8.96c-18.042-4.906-29.5-14.858-29.5-14.858s2.132 1.28 6.067 3.626c16.6 8.534 35.22 13.227 54.42 13.227 19.2 0 37.82-4.693 54.42-13.227 3.936-2.346 6.068-3.626 6.068-3.626s-11.458 9.952-29.5 14.858l6.068 8.96s21.587.112 40.73-14.315c5.547-11.946 8.746-24.746 8.746-38.186C232.386 67.67 216.856 16.597 216.856 16.597zM85.48 119.552c-8.534 0-15.53-7.466-15.53-16.6 0-9.133 6.996-16.596 15.53-16.596s15.53 7.463 15.53 16.597c.005 9.133-6.99 16.6-15.53 16.6zm85.034 0c-8.534 0-15.53-7.466-15.53-16.6 0-9.133 6.996-16.596 15.53-16.596s15.53 7.463 15.53 16.597c0 9.133-6.996 16.6-15.53 16.6z"/></svg>);
+        const EmailIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>);
+        const DownloadIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
+
+        // --- Hooks ---
+        function useTypewriter(text, speed = 100) {
+            const [displayText, setDisplayText] = useState('');
+            useEffect(() => {
+                let i = 0;
+                const timer = setInterval(() => {
+                    setDisplayText(text.slice(0, i + 1));
+                    i++;
+                    if (i >= text.length) clearInterval(timer);
+                }, speed);
+                return () => clearInterval(timer);
+            }, [text, speed]);
+            return displayText;
+        }
+
+        // --- Page Components ---
+        const HomePage = ({ setPage }) => {
+            const typedTitle = useTypewriter(profileData.title, 100);
+            return (
+                <main className="flex-grow flex items-center justify-center px-6 page-transition">
+                    <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-12 items-center">
+                        <div className="md:col-span-1 flex justify-center floating-animation">
+                            <div className="relative">
+                                <video src={profileData.avatarVideoUrl} alt="Avatar Video" className="w-48 h-48 md:w-64 md:h-64 rounded-full object-cover border-4 border-slate-700/50 glow-effect" autoPlay loop muted playsInline />
+                            </div>
+                        </div>
+                        <div className="md:col-span-2 text-center md:text-left">
+                            <h1 className="text-4xl md:text-5xl font-black text-white leading-tight">{profileData.name}</h1>
+                            <h2 className="text-2xl md:text-3xl font-mono gradient-text h-10 typing-cursor">{typedTitle}</h2>
+                            <p className="mt-6 text-slate-300 max-w-lg">{profileData.bio}</p>
+                            <p className="mt-4 text-slate-400 max-w-lg">{profileData.secondaryBio}</p>
+                            <div className="mt-8 flex flex-wrap gap-3 justify-center md:justify-start">
+                                {profileData.skills.map(skill => (<span key={skill} className="skill-badge text-sky-300 text-sm font-medium px-4 py-2 rounded-full">{skill}</span>))}
+                            </div>
+                            <div className="mt-8 flex items-center justify-center md:justify-start space-x-5">
+                                <a href={profileData.socials.twitter} target="_blank" className="text-slate-400 hover:text-white transition-transform transform hover:scale-110"><XIcon /></a>
+                                <a href={profileData.socials.telegram} target="_blank" className="text-slate-400 hover:text-white transition-transform transform hover:scale-110"><TelegramIcon /></a>
+                                <a href={profileData.socials.linkedin} target="_blank" className="text-slate-400 hover:text-white transition-transform transform hover:scale-110"><LinkedinIcon /></a>
+                                <a href={profileData.socials.discord} target="_blank" className="text-slate-400 hover:text-white transition-transform transform hover:scale-110"><DiscordIcon /></a>
+                                <a href="#" onClick={(e) => {e.preventDefault(); setPage({ name: 'contact' })}} className="text-slate-400 hover:text-white transition-transform transform hover:scale-110"><EmailIcon /></a>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            );
+        };
+        
+        const ForumPage = ({ setPage, threads, addThread }) => {
+            const [title, setTitle] = useState('');
+            const [content, setContent] = useState('');
+            const handleCreate = (e) => {
+                e.preventDefault();
+                if (!title.trim() || !content.trim()) return;
+                addThread(title.trim(), content.trim(), '訪客');
+                setTitle('');
+                setContent('');
+            };
+            return (
+                <main className="flex-grow flex flex-col items-center justify-center px-6 page-transition">
+                    <div className="w-full max-w-3xl">
+                        <h1 className="text-4xl md:text-5xl font-black text-white text-center">討論區</h1>
+                        <form onSubmit={handleCreate} className="mt-8 bg-slate-800/50 p-6 rounded-lg border border-slate-700 space-y-3">
+                            <input value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="主題標題" className="w-full bg-slate-800 p-3 rounded-md border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                            <textarea value={content} onChange={(e)=>setContent(e.target.value)} placeholder="說明內容..." rows="4" className="w-full bg-slate-800 p-3 rounded-md border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                            <div className="flex justify-end">
+                                <button type="submit" className="bg-sky-500 text-white font-semibold px-4 py-2 rounded-md hover:bg-sky-600 transition-colors">建立主題</button>
+                            </div>
+                        </form>
+                        <div className="mt-8 text-left space-y-4">
+                            {threads.length > 0 ? threads.map(thread => (
+                                <a href="#" key={thread.id} onClick={(e) => {e.preventDefault(); setPage({ name: 'threadDetail', threadId: thread.id })}} className="block bg-slate-800/50 p-6 rounded-lg border border-slate-700 hover:border-sky-500 transition-colors">
+                                    <h3 className="text-xl font-bold text-sky-400">{thread.title}</h3>
+                                    <p className="text-slate-400 mt-2 truncate">{thread.content}</p>
+                                </a>
+                            )) : (
+                                <p className="text-slate-400 text-center">尚無主題，發表第一個主題吧！</p>
+                            )}
+                        </div>
+                        <div className="text-center">
+                            <button onClick={() => setPage({ name: 'home' })} className="mt-8 text-sky-400 font-semibold hover:text-white transition-colors">← 返回首頁</button>
+                        </div>
+                    </div>
+                </main>
+            );
+        };
+
+        const CommentForm = ({ onSubmit, placeholder, buttonText }) => {
+            const [name, setName] = useState('');
+            const [text, setText] = useState('');
+            
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if ((placeholder !== "發表您的看法..." || name) && text) {
+                    onSubmit(name, text);
+                    setName('');
+                    setText('');
+                }
+            };
+
+            return (
+                <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+                    {placeholder === "發表您的看法..." && <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="您的暱稱" required className="w-full bg-slate-800 p-3 rounded-md border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500" />}
+                    <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} required rows="3" className="w-full bg-slate-800 p-3 rounded-md border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"></textarea>
+                    <button type="submit" className="bg-sky-500 text-white font-semibold px-4 py-2 rounded-md hover:bg-sky-600 transition-colors">{buttonText}</button>
+                </form>
+            );
+        };
+
+        const Comment = ({ comment, onReply }) => {
+            const [showReplyForm, setShowReplyForm] = useState(false);
+
+            return (
+                <div className="py-4 border-b border-slate-700">
+                    <p className="font-semibold text-sky-400">{comment.author}</p>
+                    <p className="text-slate-300 mt-1">{comment.text}</p>
+                    <button onClick={() => setShowReplyForm(!showReplyForm)} className="text-xs text-slate-400 mt-2 hover:text-white">回覆</button>
+                    {showReplyForm && <CommentForm onSubmit={(name, text) => { onReply(comment.id, name, text); setShowReplyForm(false); }} placeholder="您的回覆..." buttonText="送出回覆" />}
+                    
+                    {comment.replies && comment.replies.length > 0 && (
+                        <div className="ml-6 mt-4 pl-4 border-l-2 border-slate-700 space-y-4">
+                            {comment.replies.map(reply => <Comment key={reply.id} comment={reply} onReply={onReply} />)}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const ThreadDetailPage = ({ setPage, thread, addComment, addReply }) => {
+            return (
+                <main className="flex-grow flex flex-col items-center px-6 page-transition">
+                    <div className="w-full max-w-3xl py-12">
+                        <h1 className="text-3xl md:text-4xl font-black text-white text-center">{thread.title}</h1>
+                        <div className="mt-8 text-left space-y-6 bg-slate-800/50 p-8 rounded-lg border border-slate-700">
+                           <p className="text-slate-300 leading-relaxed">{thread.content}</p>
+                        </div>
+                        
+                        <div className="mt-12">
+                            <h2 className="text-2xl font-bold text-white">留言討論</h2>
+                            <div className="mt-4">
+                                {Array.isArray(thread.comments) && thread.comments.length > 0 ? (
+                                    thread.comments.map(comment => (
+                                        <Comment key={comment.id} comment={comment} onReply={(commentId, name, text) => addReply(thread.id, commentId, 'Jarron Tan (Me)', text)} />
+                                    ))
+                                ) : (
+                                    <p className="text-slate-400">尚無留言，成為第一個留言的人！</p>
+                                )}
+                            </div>
+                            <div className="mt-8">
+                                <h3 className="text-xl font-semibold text-white">留下您的迴響</h3>
+                                <CommentForm onSubmit={(name, text) => addComment(thread.id, name, text)} placeholder="發表您的看法..." buttonText="送出留言" />
+                            </div>
+                        </div>
+
+                        <div className="text-center mt-12">
+                            <button onClick={() => setPage({ name: 'forum' })} className="text-sky-400 font-semibold hover:text-white transition-colors">← 返回討論區</button>
+                        </div>
+                    </div>
+                </main>
+            );
+        };
+
+        const ContactPage = ({ setPage }) => {
+            const [status, setStatus] = useState('');
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                setStatus('感謝您的訊息，我會盡快回覆！');
+                e.target.reset();
+            };
+
+            return (
+                <main className="flex-grow flex flex-col items-center justify-center px-6 page-transition">
+                    <div className="w-full max-w-lg text-center">
+                        <h1 className="text-4xl md:text-5xl font-black text-white">聯絡我</h1>
+                        <p className="mt-4 text-slate-400">有任何想法或合作機會？歡迎隨時與我聯繫。</p>
+                        <form onSubmit={handleSubmit} className="mt-8 text-left space-y-4">
+                            <input type="text" placeholder="您的姓名" required className="w-full bg-slate-800/50 p-3 rounded-md border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                            <input type="email" placeholder="您的 Email" required className="w-full bg-slate-800/50 p-3 rounded-md border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                            <textarea placeholder="您的訊息..." required rows="5" className="w-full bg-slate-800/50 p-3 rounded-md border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"></textarea>
+                            <button type="submit" className="w-full bg-sky-500 text-white font-semibold p-3 rounded-md hover:bg-sky-600 transition-colors">發送訊息</button>
+                        </form>
+                        {status && <p className="mt-4 text-green-400">{status}</p>}
+                        <button onClick={() => setPage({ name: 'home' })} className="mt-8 text-sky-400 font-semibold hover:text-white transition-colors">← 返回首頁</button>
+                    </div>
+                </main>
+            );
+        };
+
+        const ResumePage = ({ setPage }) => {
+            return (
+                <main className="flex-grow flex flex-col items-center px-6 page-transition">
+                    <div className="w-full max-w-4xl py-12">
+                        <div className="flex justify-between items-center mb-10">
+                            <h1 className="text-4xl md:text-5xl font-black text-white">我的履歷</h1>
+                            <a href={profileData.pdfResumeUrl} target="_blank" className="bg-sky-500 text-white font-semibold px-5 py-3 rounded-md hover:bg-sky-600 transition-colors flex items-center gap-2">
+                                <DownloadIcon />
+                                <span>下載 PDF</span>
+                            </a>
+                        </div>
+
+                        <div className="space-y-12">
+                            {/* Experience Section */}
+                            <div>
+                                <h2 className="text-2xl font-bold text-sky-400 border-b-2 border-slate-700 pb-2 mb-6">工作經歷</h2>
+                                <div className="space-y-6">
+                                    {resumeData.experience.map(exp => (
+                                        <div key={exp.id}>
+                                            <div className="flex justify-between items-baseline">
+                                                <h3 className="text-xl font-semibold text-white">{exp.title}</h3>
+                                                <p className="text-sm text-slate-400 font-mono">{exp.period}</p>
+                                            </div>
+                                            <p className="text-md text-slate-300">{exp.company}</p>
+                                            <p className="mt-2 text-slate-400">{exp.description}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Education Section */}
+                            <div>
+                                <h2 className="text-2xl font-bold text-sky-400 border-b-2 border-slate-700 pb-2 mb-6">學歷</h2>
+                                <div className="space-y-4">
+                                    {resumeData.education.map(edu => (
+                                        <div key={edu.id}>
+                                            <div className="flex justify-between items-baseline">
+                                                <h3 className="text-xl font-semibold text-white">{edu.degree}</h3>
+                                                <p className="text-sm text-slate-400 font-mono">{edu.period}</p>
+                                            </div>
+                                            <p className="text-md text-slate-300">{edu.school}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            {/* Skills Section */}
+                            <div>
+                                <h2 className="text-2xl font-bold text-sky-400 border-b-2 border-slate-700 pb-2 mb-6">專業技能</h2>
+                                <div className="space-y-4">
+                                    {resumeData.skills.map(skillCat => (
+                                        <div key={skillCat.id}>
+                                            <h3 className="text-lg font-semibold text-white mb-2">{skillCat.category}</h3>
+                                            <div className="flex flex-wrap gap-3">
+                                                {skillCat.items.map(item => <span key={item} className="skill-badge text-sky-300 text-sm font-medium px-4 py-2 rounded-full">{item}</span>)}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="text-center mt-16">
+                            <button onClick={() => setPage({ name: 'home' })} className="text-sky-400 font-semibold hover:text-white transition-colors">← 返回首頁</button>
+                        </div>
+                    </div>
+                </main>
+            );
+        };
+
+
+        // --- Main App Component (Router) ---
+        function App() {
+            const [page, setPage] = useState({ name: 'home' });
+            const [threads, setThreads] = useState([]);
+            const [userId, setUserId] = useState(null);
+            const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
+
+            // Authentication and Data Fetching
+            useEffect(() => {
+                const initFirebase = () => {
+                    if (Object.keys(firebaseConfig).length > 0 && !db) {
+                        try {
+                            const appInstance = firebase.initializeApp(firebaseConfig);
+                            const authInstance = firebase.auth();
+                            const dbInstance = firebase.firestore();
+                            setAuth(authInstance);
+                            setDb(dbInstance);
+                        } catch (e) {
+                            console.error("Error initializing Firebase:", e);
+                        }
+                    } else if (db) {
+                         // Already initialized
+                    } else {
+                        console.log("Firebase not configured.");
+                    }
+                };
+                
+                if (window.firebase) {
+                    initFirebase();
+                } else {
+                     // Wait for firebase to load
+                    const interval = setInterval(() => {
+                        if (window.firebase) {
+                            clearInterval(interval);
+                            initFirebase();
+                        }
+                    }, 100);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (!db || !auth) {
+                    // 離線模式：使用示例資料（討論區）
+                    console.log("離線模式：使用示例討論區資料");
+                    const sampleThreads = [
+                        {
+                            id: 't1',
+                            title: '歡迎來到討論區',
+                            content: '分享你的想法、問題與觀點吧！',
+                            createdAt: new Date(),
+                            comments: [
+                                { id: 'c1', author: '訪客', text: '嗨大家好！', createdAt: new Date(), replies: [] }
+                            ]
+                        }
+                    ];
+                    setThreads(sampleThreads);
+                    return;
+                }
+
+                const authAndFetch = async () => {
+                    const { signInAnonymously, signInWithCustomToken } = firebase.auth;
+                    const { collection, query, orderBy, onSnapshot, getDocs } = firebase.firestore;
+                    try {
+                        if (auth.currentUser) {
+                             setUserId(auth.currentUser.uid);
+                        } else {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                            setUserId(auth.currentUser.uid);
+                        }
+                        
+                        const threadsCollectionRef = collection(db, `/artifacts/${appId}/public/data/forum/threads`);
+                        const q = query(threadsCollectionRef, orderBy("createdAt", "desc"));
+
+                        const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+                            try {
+                                const threadsData = [];
+                                for (const threadDoc of querySnapshot.docs) {
+                                    const thread = { id: threadDoc.id, ...threadDoc.data(), comments: [] };
+                                    try {
+                                        const commentsCollectionRef = collection(db, `/artifacts/${appId}/public/data/forum/threads/${threadDoc.id}/comments`);
+                                        const commentsQueryRef = query(commentsCollectionRef, orderBy("createdAt", "asc"));
+                                        const commentsSnapshot = await getDocs(commentsQueryRef);
+
+                                        const commentsWithReplies = [];
+                                        for (const commentDoc of commentsSnapshot.docs) {
+                                            const baseComment = { id: commentDoc.id, ...commentDoc.data(), replies: [] };
+                                            try {
+                                                const repliesCollectionRef = collection(db, `/artifacts/${appId}/public/data/forum/threads/${threadDoc.id}/comments/${commentDoc.id}/replies`);
+                                                const repliesQueryRef = query(repliesCollectionRef, orderBy("createdAt", "asc"));
+                                                const repliesSnapshot = await getDocs(repliesQueryRef);
+                                                baseComment.replies = repliesSnapshot.docs.map(replyDoc => ({ id: replyDoc.id, ...replyDoc.data() }));
+                                            } catch (replyError) {
+                                                console.warn("無法載入回覆:", replyError);
+                                                baseComment.replies = [];
+                                            }
+                                            commentsWithReplies.push(baseComment);
+                                        }
+
+                                        thread.comments = commentsWithReplies;
+                                    } catch (commentError) {
+                                        console.warn("無法載入留言:", commentError);
+                                        thread.comments = [];
+                                    }
+                                    threadsData.push(thread);
+                                }
+                                setThreads(threadsData);
+                            } catch (error) {
+                                console.error("處理筆記數據時出錯:", error);
+                                setThreads([]);
+                            }
+                        }, (error) => {
+                            console.error("監聽筆記集合時出錯:", error);
+                            setThreads([]);
+                        });
+
+                        return () => unsubscribe();
+                    } catch (error) {
+                        console.error("Firebase 認證/數據錯誤:", error);
+                        // 認證失敗時使用示例數據
+                        const sampleNotes = [
+                            {
+                                id: '1',
+                                title: 'DeFi 市場分析',
+                                content: '去中心化金融市場的發展趨勢分析，包含流動性挖礦、收益農場等熱門話題的深度探討。',
+                                createdAt: new Date(),
+                                comments: [
+                                    {
+                                        id: 'c1',
+                                        author: 'Web3 愛好者',
+                                        text: '非常詳細的分析，對理解 DeFi 生態很有幫助！',
+                                        createdAt: new Date(),
+                                        replies: []
+                                    }
+                                ]
+                            },
+                            {
+                                id: '2',
+                                title: '傳統金融與加密貨幣的橋接',
+                                content: '探討如何將傳統金融的穩定性與加密貨幣的創新性結合，創造新的金融產品和服務。',
+                                createdAt: new Date(),
+                                comments: []
+                            }
+                        ];
+                        setNotes(sampleNotes);
+                    }
+                };
+
+                authAndFetch();
+
+            }, [db, auth]);
+
+            const addComment = async (threadId, author, text) => {
+                if (!userId || !db) {
+                    // 離線模式：直接更新本地狀態
+                    setThreads(prevThreads => prevThreads.map(thread => {
+                        if (thread.id === threadId) {
+                            const newComment = {
+                                id: `comment_${Date.now()}`,
+                                author,
+                                text,
+                                createdAt: new Date(),
+                                replies: []
+                            };
+                            return { ...thread, comments: [...(thread.comments || []), newComment] };
+                        }
+                        return thread;
+                    }));
+                    return;
+                }
+                const { collection, addDoc, serverTimestamp } = firebase.firestore;
+                try {
+                    const commentsCollectionRef = collection(db, `/artifacts/${appId}/public/data/forum/threads/${threadId}/comments`);
+                    await addDoc(commentsCollectionRef, {
+                        author,
+                        text,
+                        createdAt: serverTimestamp(),
+                        userId,
+                        replies: []
+                    });
+                } catch (error) {
+                    console.error("Error adding comment: ", error);
+                }
+            };
+
+            const addThread = async (title, content, author) => {
+                // 樂觀更新
+                const tempId = `t_${Date.now()}`;
+                setThreads(prev => [{ id: tempId, title, content, createdAt: new Date(), comments: [] }, ...prev]);
+                if (!userId || !db) return;
+                const { collection, addDoc, serverTimestamp } = firebase.firestore;
+                try {
+                    const threadsCollectionRef = collection(db, `/artifacts/${appId}/public/data/forum/threads`);
+                    await addDoc(threadsCollectionRef, { title, content, author, createdAt: serverTimestamp() });
+                } catch (e) {
+                    console.error('新增主題失敗:', e);
+                }
+            };
+
+            const addReply = async (threadId, parentCommentId, author, text) => {
+                if (!userId || !db) {
+                    // 離線模式：直接更新本地狀態
+                    setThreads(prevThreads => {
+                        return prevThreads.map(thread => {
+                            if (thread.id === threadId) {
+                                return {
+                                    ...thread,
+                                    comments: thread.comments.map(comment => {
+                                        if (comment.id === parentCommentId) {
+                                            const newReply = {
+                                                id: `reply_${Date.now()}`,
+                                                author,
+                                                text,
+                                                createdAt: new Date(),
+                                                replies: []
+                                            };
+                                            return {
+                                                ...comment,
+                                                replies: [...(comment.replies || []), newReply]
+                                            };
+                                        }
+                                        return comment;
+                                    })
+                                };
+                            }
+                            return thread;
+                        });
+                    });
+                    return;
+                }
+
+                const { collection, addDoc, serverTimestamp } = firebase.firestore;
+                try {
+                    const repliesCollectionRef = collection(db, `/artifacts/${appId}/public/data/forum/threads/${threadId}/comments/${parentCommentId}/replies`);
+                    await addDoc(repliesCollectionRef, {
+                        author,
+                        text,
+                        createdAt: serverTimestamp(),
+                        userId
+                    });
+                } catch (error) {
+                    console.error("Error adding reply: ", error);
+                }
+            };
+
+            const Navigation = () => (
+                <header className="w-full max-w-7xl mx-auto px-6 py-8">
+                    <nav className="flex justify-between items-center">
+                        <a href="#" onClick={(e) => {e.preventDefault(); setPage({ name: 'home' })}} className="flex items-center space-x-3 cursor-pointer">
+                            <span className="font-bold text-xl text-white">{profileData.name}</span>
+                            <span className="text-slate-500">/</span>
+                            <span className="font-mono text-sm text-slate-400">{profileData.subtitle}</span>
+                        </a>
+                        <div className="hidden md:flex items-center space-x-8 text-sm font-medium">
+                            <a href="#" onClick={(e) => {e.preventDefault(); setPage({ name: 'resume' })}} className="text-slate-300 hover:text-white transition-colors">履歷</a>
+                            <a href={profileData.linkedinUrl} target="_blank" className="text-slate-300 hover:text-white transition-colors">LinkedIn</a>
+                            <a href="#" onClick={(e) => {e.preventDefault(); setPage({ name: 'forum' })}} className="text-slate-300 hover:text-white transition-colors">討論區</a>
+                        </div>
+                    </nav>
+                </header>
+            );
+
+            const renderPage = () => {
+                switch (page.name) {
+                    case 'forum':
+                        return <ForumPage setPage={setPage} threads={threads} addThread={addThread} />;
+                    case 'threadDetail': {
+                        const thread = threads.find(t => t.id === page.threadId);
+                        return thread ? <ThreadDetailPage setPage={setPage} thread={thread} addComment={addComment} addReply={addReply} /> : <div>Loading thread...</div>;
+                    }
+                    case 'contact':
+                        return <ContactPage setPage={setPage} />;
+                    case 'resume':
+                        return <ResumePage setPage={setPage} />;
+                    default:
+                        return <HomePage setPage={setPage} />;
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    <Navigation />
+                    {renderPage()}
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
