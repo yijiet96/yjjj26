@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Send, Trash2, MoreVertical, ImageIcon } from 'lucide-react';
+import { Send, Trash2, MoreVertical, ImageIcon, Copy, Check } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -42,6 +42,7 @@ export default function OrderDetail() {
   const [activeItem, setActiveItem] = useState<OrderItem | null>(null);
   const [showImage, setShowImage] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   if (!order) {
     return (
@@ -72,6 +73,34 @@ export default function OrderDetail() {
   function handleDelete() {
     deleteOrder(order!.id);
     navigate('/', { replace: true });
+  }
+
+  async function copyOrderSummary() {
+    const total = owed + paid;
+    const lines = [
+      `【${order!.shopName}】${fmtDate(order!.createdAt, 'M/d')} · ${order!.items.length}杯`,
+      '─────────────',
+      ...order!.items.map((item) => {
+        const name = colMap.get(item.colleagueId)?.name ?? '(已刪除)';
+        const status = item.paid ? '✅' : '⏳';
+        return `${name}　${item.drinkName}　${ntd(item.price)}　${status}`;
+      }),
+      '─────────────',
+      `合計 ${ntd(total)}｜已收 ${ntd(paid)}｜待收 ${ntd(owed)}`,
+    ];
+    const text = lines.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   return (
@@ -106,6 +135,11 @@ export default function OrderDetail() {
             </Link>
           </Button>
         )}
+
+        <Button variant="outline" className="w-full" onClick={copyOrderSummary}>
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          {copied ? '已複製' : '複製訂單摘要'}
+        </Button>
 
         {order.rawImageBase64 && (
           <Button variant="outline" className="w-full" onClick={() => setShowImage(true)}>
