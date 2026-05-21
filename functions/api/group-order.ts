@@ -270,11 +270,66 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       }
     }
 
-    // Try parsing captured API responses first
-    for (const { url, body } of capturedResponses) {
+    // Direct API call from within the page (uses session cookies, avoids event-listener race)
+    const uuidMatch = urlParam.match(/group-orders\/([a-f0-9-]+)/);
+    const groupOrderUuid = uuidMatch?.[1] ?? "";
+
+    const directApiResult = groupOrderUuid ? await page.evaluate(async (uuid) => {
+      const endpoints = [
+        `/_p/api/getDraftOrderByUuidV2?uuid=${uuid}`,
+        `/_p/api/getDraftOrderByUuidV1?uuid=${uuid}`,
+        `/_p/api/getGroupOrderV1?uuid=${uuid}`,
+      ];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep, { credentials: "include" });
+          if (!res.ok) continue;
+          const text = await res.text();
+          return { url: ep, body: text.substring(0, 8000) };
+        } catch { /* try next */ }
+      }
+      return null;
+    }, groupOrderUuid) : null;
+
+    if (directApiResult?.body) {
+      try {
+        const json = JSON.parse(directApiResult.body);
+        // UberEats wraps data differently per endpoint — try common paths
+        const candidates = [
+          json?.data,
+          json?.data?.draftOrder,
+          json?.data?.groupOrder,
+          json?.status === "success" ? json?.data : null,
+        ].filter(Boolean);
+
+        for (const data of candidates) {
+          const participants: any[] = data?.carts || data?.participants || data?.members || data?.cartViews || [];
+          if (!participants.length) continue;
+          const apiItems: { name: string; drink: string; price: number }[] = [];
+          const apiShop = data?.store?.title || data?.storeName || data?.restaurant?.title || "";
+          for (const p of participants) {
+            const pName = (p.name || p.displayName || p.eaterName || p.participantName || "Unknown")
+              .replace(/\s*\(you\)/i, "").replace(/\s*\(您\)/, "").trim();
+            const cartItems: any[] = p.cartItems || p.items || p.cart?.items || p.shoppingCart?.cartItems || [];
+            for (const item of cartItems) {
+              const drink = item.title || item.name || item.itemName || item.catalogItem?.title || "";
+              const raw = item.price || item.unitPrice || item.totalPrice || item.amount || 0;
+              const price = Math.round(typeof raw === "number" ? (raw > 1000 ? raw / 100 : raw) : 0);
+              if (drink) apiItems.push({ name: pName, drink, price });
+            }
+          }
+          if (apiItems.length > 0) {
+            return Response.json({ success: true, shopName: apiShop, items: apiItems });
+          }
+        }
+      } catch { /* fall through */ }
+    }
+
+    // Try parsing captured network responses as fallback
+    for (const { body } of capturedResponses) {
       try {
         const json = JSON.parse(body);
-        const data = json?.data || json?.status === "success" && json?.data;
+        const data = json?.data || (json?.status === "success" ? json?.data : null);
         const participants = data?.carts || data?.participants || data?.members || data?.cartViews;
         if (participants?.length) {
           const apiItems: { name: string; drink: string; price: number }[] = [];
@@ -282,9 +337,9 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
           for (const p of participants) {
             const pName = (p.name || p.displayName || p.eaterName || p.participantName || "Unknown")
               .replace(/\s*\(you\)/i, "").trim();
-            const cartItems = p.cartItems || p.items || p.cart?.items || p.shoppingCart?.items || [];
+            const cartItems = p.cartItems || p.items || p.cart?.items || p.shoppingCart?.cartItems || [];
             for (const item of cartItems) {
-              const drink = item.title || item.name || item.itemName || "";
+              const drink = item.title || item.name || item.itemName || item.catalogItem?.title || "";
               const raw = item.price || item.unitPrice || item.totalPrice || item.amount || 0;
               const price = Math.round(raw > 1000 ? raw / 100 : raw);
               if (drink) apiItems.push({ name: pName, drink, price });
@@ -423,7 +478,8 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
         hasDraftOrderState: !!draftOrder,
         stateKeys: stateData ? Object.keys(stateData) : null,
         capturedApiUrls: capturedResponses.map((r) => r.url),
-        capturedResponseSample: capturedResponses[0]?.body?.substring(0, 2000) ?? null,
+        directApiUrl: directApiResult?.url ?? null,
+        directApiSample: directApiResult?.body?.substring(0, 2000) ?? null,
         pageTextSample: pageText.substring(0, 500),
         domTestIds: domItems.testIds,
       },
