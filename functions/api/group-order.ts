@@ -423,6 +423,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
         hasDraftOrderState: !!draftOrder,
         stateKeys: stateData ? Object.keys(stateData) : null,
         capturedApiUrls: capturedResponses.map((r) => r.url),
+        capturedResponseSample: capturedResponses[0]?.body?.substring(0, 2000) ?? null,
         pageTextSample: pageText.substring(0, 500),
         domTestIds: domItems.testIds,
       },
