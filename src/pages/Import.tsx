@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Camera, Banknote, Pencil, AlertCircle, Users } from 'lucide-react';
+import { Camera, Banknote, Pencil, AlertCircle, Users, FileText, Link2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Card } from '@/components/ui/card';
 import { useStore } from '@/lib/store';
@@ -38,6 +38,20 @@ export default function Import() {
           </Card>
         )}
 
+        <Link to="/import/group-order">
+          <Card className="p-4 flex items-center gap-4 hover:bg-accent transition-colors">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/15 text-orange-600">
+              <Link2 className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold">UberEats 團購網址</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                貼上團購連結，自動讀取所有人訂單（無需截圖）
+              </div>
+            </div>
+          </Card>
+        </Link>
+
         <Link to="/import/ubereats">
           <Card className="p-4 flex items-center gap-4 hover:bg-accent transition-colors">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600">
@@ -47,6 +61,20 @@ export default function Import() {
               <div className="font-semibold">UberEats 訂單截圖</div>
               <div className="text-xs text-muted-foreground mt-0.5">
                 AI 解析品項與金額，自動配對下單者
+              </div>
+            </div>
+          </Card>
+        </Link>
+
+        <Link to="/import/ubereats-text">
+          <Card className="p-4 flex items-center gap-4 hover:bg-accent transition-colors">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600">
+              <FileText className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold">UberEats 電子明細貼上</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                複製電子明細文字直接貼上，免截圖免 AI
               </div>
             </div>
           </Card>

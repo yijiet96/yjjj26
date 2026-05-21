@@ -5,6 +5,8 @@ import Import from '@/pages/Import';
 import ImportUbereats from '@/pages/ImportUbereats';
 import ImportPayment from '@/pages/ImportPayment';
 import ImportText from '@/pages/ImportText';
+import ImportUberEatsText from '@/pages/ImportUberEatsText';
+import ImportGroupOrder from '@/pages/ImportGroupOrder';
 import NewOrder from '@/pages/NewOrder';
 import OrderDetail from '@/pages/OrderDetail';
 import OrderNotify from '@/pages/OrderNotify';
@@ -26,6 +28,8 @@ export default function App() {
           <Route path="/import/ubereats" element={<ImportUbereats />} />
           <Route path="/import/payment" element={<ImportPayment />} />
           <Route path="/import/text" element={<ImportText />} />
+          <Route path="/import/ubereats-text" element={<ImportUberEatsText />} />
+          <Route path="/import/group-order" element={<ImportGroupOrder />} />
           <Route path="/orders/new" element={<NewOrder />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
           <Route path="/orders/:id/notify" element={<OrderNotify />} />
