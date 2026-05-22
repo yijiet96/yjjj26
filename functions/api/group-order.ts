@@ -363,56 +363,83 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       } catch { /* fall through */ }
     }
 
-    // Parse all captured CDP responses — this is now the primary extraction path
+    // Parse all captured CDP responses — primary extraction path
     for (const { url, body } of capturedResponses) {
       try {
         const json = JSON.parse(body);
-        // Try every known UberEats response envelope shape
-        const dataCandidates = [
-          json?.data,
-          json?.data?.draftOrder,
-          json?.data?.groupOrder,
-          json?.data?.draftOrders?.[0],
-          json?.status === "success" ? json?.data : null,
-        ].filter(Boolean);
+        if (json?.status !== "success") continue;
+        const root = json.data;
 
-        for (const data of dataCandidates) {
-          const participants: any[] =
-            data?.carts || data?.participants || data?.members ||
-            data?.cartViews || data?.eaterCarts || [];
-          if (!participants.length) continue;
+        // Strategy A: participants array (older API shape)
+        const participantArrayCandidates: any[][] = [
+          root?.carts, root?.participants, root?.members,
+          root?.cartViews, root?.eaterCarts,
+          root?.draftOrder?.carts, root?.draftOrder?.participants,
+          root?.draftOrder?.eaterCarts,
+          root?.draftOrders,
+        ].filter(Array.isArray);
 
+        for (const participants of participantArrayCandidates) {
           const apiItems: { name: string; drink: string; price: number }[] = [];
           const apiShop =
-            data?.store?.title || data?.storeName || data?.restaurant?.title ||
-            data?.restaurantName || "";
+            root?.store?.title || root?.draftOrder?.store?.title ||
+            root?.storeName || root?.draftOrder?.storeName || "";
 
           for (const p of participants) {
             const pName = (
-              p.name || p.displayName || p.eaterName || p.participantName ||
-              p.firstName || "Unknown"
+              p.name || p.displayName || p.eaterName || p.participantName || p.firstName || "Unknown"
             ).replace(/\s*\(you\)/i, "").replace(/\s*\(您\)/, "").trim();
 
             const cartItems: any[] =
               p.cartItems || p.items || p.cart?.items ||
-              p.shoppingCart?.cartItems || p.shoppingCart?.items || [];
+              p.shoppingCart?.items || p.shoppingCart?.cartItems || [];
 
             for (const item of cartItems) {
-              const drink =
-                item.title || item.name || item.itemName ||
-                item.catalogItem?.title || item.menuItem?.title || "";
-              const raw =
-                item.price || item.unitPrice || item.totalPrice ||
-                item.amount || item.subtotal || 0;
-              const price = Math.round(
-                typeof raw === "number" ? (raw > 1000 ? raw / 100 : raw) : 0
-              );
-              if (drink) apiItems.push({ name: pName, drink, price });
+              const drink = item.title || item.name || item.itemName || item.catalogItem?.title || "";
+              const raw = item.price || item.unitPrice || item.totalPrice || item.amount || 0;
+              const price = Math.round(typeof raw === "number" ? (raw > 1000 ? raw / 100 : raw) : 0);
+              if (drink) for (let q = 0; q < (item.quantity || 1); q++) apiItems.push({ name: pName, drink, price });
+            }
+          }
+          if (apiItems.length > 0) {
+            return Response.json({ success: true, shopName: apiShop, items: apiItems });
+          }
+        }
+
+        // Strategy B: flat shoppingCart.items with consumerUuid (confirmed structure from debug)
+        const draftOrder = root?.draftOrder;
+        const flatItems: any[] = draftOrder?.shoppingCart?.items || [];
+        if (flatItems.length > 0) {
+          // Build consumerUuid → name map from eaterCarts or participants if present
+          const eaterMap: Record<string, string> = {};
+          const eaters: any[] = draftOrder?.eaterCarts || draftOrder?.participants || draftOrder?.carts || [];
+          for (const e of eaters) {
+            const uuid = e.consumerUuid || e.uuid || e.eaterUuid;
+            const name = (e.name || e.displayName || e.eaterName || "").replace(/\s*\(you\)/i, "").replace(/\s*\(您\)/, "").trim();
+            if (uuid && name) eaterMap[uuid] = name;
+          }
+
+          const apiItems: { name: string; drink: string; price: number }[] = [];
+          const apiShop = draftOrder?.store?.title || draftOrder?.storeName || "";
+
+          // Group flat items by consumerUuid
+          const byConsumer: Record<string, any[]> = {};
+          for (const item of flatItems) {
+            const cid = item.consumerUuid || "unknown";
+            (byConsumer[cid] = byConsumer[cid] || []).push(item);
+          }
+
+          for (const [consumerUuid, items] of Object.entries(byConsumer)) {
+            const name = eaterMap[consumerUuid] || consumerUuid.substring(0, 8);
+            for (const item of items) {
+              const drink = item.title || item.name || "";
+              const price = Math.round((item.price || 0) / 100);
+              if (drink) for (let q = 0; q < (item.quantity || 1); q++) apiItems.push({ name, drink, price });
             }
           }
 
           if (apiItems.length > 0) {
-            return Response.json({ success: true, shopName: apiShop, items: apiItems, source: url });
+            return Response.json({ success: true, shopName: apiShop, items: apiItems, needsNameMapping: Object.keys(eaterMap).length === 0 });
           }
         }
       } catch { /* not parseable JSON */ }
@@ -546,7 +573,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
         stateKeys: stateData ? Object.keys(stateData) : null,
         capturedApiUrls: capturedResponses.map((r) => r.url),
         capturedResponseCount: capturedResponses.length,
-        capturedResponseSample: capturedResponses[0]?.body?.substring(0, 2000) ?? null,
+        capturedResponseSample: capturedResponses[0]?.body?.substring(0, 5000) ?? null,
         capturedRequests: capturedRequests.map((r) => ({ url: r.url, method: r.method, postData: r.postData.substring(0, 200) })),
         directApiUrl: directApiResult?.url ?? null,
         directApiSample: directApiResult?.body?.substring(0, 2000) ?? null,
