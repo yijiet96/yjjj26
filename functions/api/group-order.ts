@@ -363,6 +363,9 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       } catch { /* fall through */ }
     }
 
+    // Grab page text early — needed for name matching in Strategy B
+    const pageText = await page.evaluate(() => document.body.innerText);
+
     // Parse all captured CDP responses — primary extraction path
     for (const { url, body } of capturedResponses) {
       try {
@@ -410,25 +413,57 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
         const draftOrder = root?.draftOrder;
         const flatItems: any[] = draftOrder?.shoppingCart?.items || [];
         if (flatItems.length > 0) {
-          // Build consumerUuid → name map from eaterCarts or participants if present
+          // Build consumerUuid → name map — try API fields first
           const eaterMap: Record<string, string> = {};
-          const eaters: any[] = draftOrder?.eaterCarts || draftOrder?.participants || draftOrder?.carts || [];
-          for (const e of eaters) {
-            const uuid = e.consumerUuid || e.uuid || e.eaterUuid;
-            const name = (e.name || e.displayName || e.eaterName || "").replace(/\s*\(you\)/i, "").replace(/\s*\(您\)/, "").trim();
+          const eaterSources: any[] = [
+            ...(draftOrder?.eaterCarts || []),
+            ...(draftOrder?.participants || []),
+            ...(draftOrder?.carts || []),
+            ...(draftOrder?.groupParticipants || []),
+          ];
+          for (const e of eaterSources) {
+            const uuid =
+              e.consumerUuid || e.uuid || e.eaterUuid ||
+              e.participantUuid || e.userUuid;
+            const name = (
+              e.name || e.displayName || e.eaterName ||
+              e.participantName || e.firstName || ""
+            ).replace(/\s*\(you\)/i, "").replace(/\s*\(您\)/, "").trim();
             if (uuid && name) eaterMap[uuid] = name;
           }
 
-          const apiItems: { name: string; drink: string; price: number }[] = [];
           const apiShop = draftOrder?.store?.title || draftOrder?.storeName || "";
 
-          // Group flat items by consumerUuid
+          // Group flat items by consumerUuid, counting total quantity per person
           const byConsumer: Record<string, any[]> = {};
           for (const item of flatItems) {
             const cid = item.consumerUuid || "unknown";
             (byConsumer[cid] = byConsumer[cid] || []).push(item);
           }
 
+          // If eaterMap empty, try matching by item count against pageText participant list
+          if (Object.keys(eaterMap).length === 0 && pageText) {
+            // pageText pattern: "{name}\nCreator\n • \nN items" or "{name}\nAdding items\n • \nN items"
+            const pageLines = pageText.split("\n").map((l: string) => l.trim()).filter(Boolean);
+            const participantPattern: { name: string; count: number }[] = [];
+            for (let i = 0; i < pageLines.length - 2; i++) {
+              const countMatch = pageLines[i + 2]?.match(/^(\d+)\s+item/);
+              if (countMatch && (pageLines[i + 1] === "Creator" || pageLines[i + 1] === "Adding items")) {
+                const name = pageLines[i]
+                  .replace(/\s*\(you\)/i, "").replace(/\s*\(您本人\)/, "")
+                  .replace(/\s*\(您\)/, "").replace(/DrinkRun/i, "").trim();
+                if (name) participantPattern.push({ name, count: parseInt(countMatch[1]) });
+              }
+            }
+            // Match UUID groups to participants by total item quantity
+            for (const [uuid, items] of Object.entries(byConsumer)) {
+              const totalQty = items.reduce((s: number, it: any) => s + (it.quantity || 1), 0);
+              const match = participantPattern.find(p => p.count === totalQty && !Object.values(eaterMap).includes(p.name));
+              if (match) eaterMap[uuid] = match.name;
+            }
+          }
+
+          const apiItems: { name: string; drink: string; price: number }[] = [];
           for (const [consumerUuid, items] of Object.entries(byConsumer)) {
             const name = eaterMap[consumerUuid] || consumerUuid.substring(0, 8);
             for (const item of items) {
@@ -439,14 +474,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
           }
 
           if (apiItems.length > 0) {
-            const noNames = Object.keys(eaterMap).length === 0;
-            return Response.json({
-              success: true,
-              shopName: apiShop,
-              items: apiItems,
-              needsNameMapping: noNames,
-              draftOrderKeys: noNames ? Object.keys(draftOrder) : undefined,
-            });
+            return Response.json({ success: true, shopName: apiShop, items: apiItems });
           }
         }
       } catch { /* not parseable JSON */ }
@@ -541,9 +569,6 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       );
       return Response.json({ success: true, shopName, items: domItems.items });
     }
-
-    // Extract page text from cart-summary
-    const pageText = await page.evaluate(() => document.body.innerText);
 
     // Parse cart-summary text for order items
     const items = parseCartSummaryText(pageText);
