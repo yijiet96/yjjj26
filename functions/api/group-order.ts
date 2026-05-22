@@ -441,24 +441,34 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
             (byConsumer[cid] = byConsumer[cid] || []).push(item);
           }
 
-          // If eaterMap empty, try matching by item count against pageText participant list
+          // If eaterMap empty, extract participant names from pageText
+          // Actual structure (each on its own line after trim+filter):
+          //   {name}
+          //   Creator  OR  Adding items
+          //   •
+          //   N items  OR  No items added yet
           if (Object.keys(eaterMap).length === 0 && pageText) {
-            // pageText pattern: "{name}\nCreator\n • \nN items" or "{name}\nAdding items\n • \nN items"
             const pageLines = pageText.split("\n").map((l: string) => l.trim()).filter(Boolean);
             const participantPattern: { name: string; count: number }[] = [];
-            for (let i = 0; i < pageLines.length - 2; i++) {
-              const countMatch = pageLines[i + 2]?.match(/^(\d+)\s+item/);
-              if (countMatch && (pageLines[i + 1] === "Creator" || pageLines[i + 1] === "Adding items")) {
-                const name = pageLines[i]
-                  .replace(/\s*\(you\)/i, "").replace(/\s*\(您本人\)/, "")
-                  .replace(/\s*\(您\)/, "").replace(/DrinkRun/i, "").trim();
-                if (name) participantPattern.push({ name, count: parseInt(countMatch[1]) });
-              }
+            const roleWords = new Set(["Creator", "Adding items", "創建者", "新增餐點"]);
+            for (let i = 0; i < pageLines.length - 3; i++) {
+              if (!roleWords.has(pageLines[i + 1])) continue;
+              // i+2 is the bullet "•", i+3 is "N items" or "No items added yet"
+              const countMatch = pageLines[i + 3]?.match(/^(\d+)\s+item/i);
+              if (!countMatch) continue;
+              const rawName = pageLines[i]
+                .replace(/\s*\(you\)/i, "").replace(/\s*\(您本人\)/g, "")
+                .replace(/\s*\(您\)/g, "").trim();
+              // Skip DrinkRun (the scraper itself) and empty names
+              if (!rawName || /^DrinkRun$/i.test(rawName)) continue;
+              participantPattern.push({ name: rawName, count: parseInt(countMatch[1]) });
             }
-            // Match UUID groups to participants by total item quantity
+            // Match UUID groups → participant by total quantity
             for (const [uuid, items] of Object.entries(byConsumer)) {
               const totalQty = items.reduce((s: number, it: any) => s + (it.quantity || 1), 0);
-              const match = participantPattern.find(p => p.count === totalQty && !Object.values(eaterMap).includes(p.name));
+              const match = participantPattern.find(
+                p => p.count === totalQty && !Object.values(eaterMap).includes(p.name)
+              );
               if (match) eaterMap[uuid] = match.name;
             }
           }
