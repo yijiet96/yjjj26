@@ -439,7 +439,14 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
           }
 
           if (apiItems.length > 0) {
-            return Response.json({ success: true, shopName: apiShop, items: apiItems, needsNameMapping: Object.keys(eaterMap).length === 0 });
+            const noNames = Object.keys(eaterMap).length === 0;
+            return Response.json({
+              success: true,
+              shopName: apiShop,
+              items: apiItems,
+              needsNameMapping: noNames,
+              draftOrderKeys: noNames ? Object.keys(draftOrder) : undefined,
+            });
           }
         }
       } catch { /* not parseable JSON */ }

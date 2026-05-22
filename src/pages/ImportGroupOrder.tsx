@@ -72,6 +72,9 @@ export default function ImportGroupOrder() {
         });
         setShopName(data.shopName || '');
         setRows(reviewRows);
+        if (data.needsNameMapping) {
+          setHint(`⚠️ 無法取得點餐者姓名，名字欄顯示為 UUID 前綴，請在下方手動對應同事。draftOrderKeys: ${JSON.stringify(data.draftOrderKeys)}`);
+        }
         setStep('review');
         return;
       }
