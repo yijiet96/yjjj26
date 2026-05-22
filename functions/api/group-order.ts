@@ -497,6 +497,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     return Response.json({
       success: false,
       fallback: true,
+      v: "20260522-v5",
       pageText: pageText.substring(0, 3000),
       screenshot,
       debug: {
