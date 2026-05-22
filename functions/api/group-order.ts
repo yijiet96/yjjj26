@@ -85,17 +85,27 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
     );
 
-    // Intercept API responses to find order data
+    // Intercept API requests + responses to find order data
     const capturedResponses: { url: string; body: string }[] = [];
+    const capturedRequests: { url: string; method: string; postData: string }[] = [];
+
+    page.on("request", (request) => {
+      const url = request.url();
+      if (url.includes("getDraftOrder") || url.includes("getGroupOrder")) {
+        capturedRequests.push({
+          url,
+          method: request.method(),
+          postData: request.postData() ?? "",
+        });
+      }
+    });
+
     page.on("response", async (response) => {
       const url = response.url();
-      if (
-        url.includes("/api/") &&
-        (url.includes("getDraftOrder") || url.includes("cart") || url.includes("group"))
-      ) {
+      if (url.includes("getDraftOrder") || url.includes("getGroupOrder")) {
         try {
           const body = await response.text();
-          if (body.length < 50000) capturedResponses.push({ url, body });
+          if (body.length < 100000) capturedResponses.push({ url, body });
         } catch { /* ignore */ }
       }
     });
@@ -274,22 +284,44 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     const uuidMatch = urlParam.match(/group-orders\/([a-f0-9-]+)/);
     const groupOrderUuid = uuidMatch?.[1] ?? "";
 
-    const directApiResult = groupOrderUuid ? await page.evaluate(async (uuid) => {
-      const endpoints = [
-        `/_p/api/getDraftOrderByUuidV2?uuid=${uuid}`,
-        `/_p/api/getDraftOrderByUuidV1?uuid=${uuid}`,
-        `/_p/api/getGroupOrderV1?uuid=${uuid}`,
-      ];
-      for (const ep of endpoints) {
+    // Use captured request details to replicate the exact API call
+    const directApiResult = await page.evaluate(async (
+      uuid: string,
+      capturedReqs: { url: string; method: string; postData: string }[]
+    ) => {
+      // Try to replicate a captured request first (exact method + body)
+      for (const req of capturedReqs) {
         try {
-          const res = await fetch(ep, { credentials: "include" });
+          const opts: RequestInit = {
+            method: req.method,
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+          };
+          if (req.method === "POST" && req.postData) opts.body = req.postData;
+          const res = await fetch(req.url, opts);
           if (!res.ok) continue;
           const text = await res.text();
-          return { url: ep, body: text.substring(0, 8000) };
+          if (text.length > 10) return { url: req.url, body: text.substring(0, 8000) };
+        } catch { /* try next */ }
+      }
+      // Fallback: try common GET/POST patterns
+      const attempts = [
+        { url: `/_p/api/getDraftOrderByUuidV2`, method: "POST", body: JSON.stringify({ uuid }) },
+        { url: `/_p/api/getDraftOrderByUuidV1`, method: "POST", body: JSON.stringify({ uuid }) },
+        { url: `/_p/api/getDraftOrderByUuidV2?uuid=${uuid}`, method: "GET", body: "" },
+      ];
+      for (const a of attempts) {
+        try {
+          const opts: RequestInit = { method: a.method, credentials: "include", headers: { "content-type": "application/json" } };
+          if (a.body) opts.body = a.body;
+          const res = await fetch(a.url, opts);
+          if (!res.ok) continue;
+          const text = await res.text();
+          if (text.length > 10) return { url: a.url, body: text.substring(0, 8000) };
         } catch { /* try next */ }
       }
       return null;
-    }, groupOrderUuid) : null;
+    }, groupOrderUuid, capturedRequests);
 
     if (directApiResult?.body) {
       try {
@@ -478,6 +510,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
         hasDraftOrderState: !!draftOrder,
         stateKeys: stateData ? Object.keys(stateData) : null,
         capturedApiUrls: capturedResponses.map((r) => r.url),
+        capturedRequests: capturedRequests.map((r) => ({ url: r.url, method: r.method, postData: r.postData.substring(0, 200) })),
         directApiUrl: directApiResult?.url ?? null,
         directApiSample: directApiResult?.body?.substring(0, 2000) ?? null,
         pageTextSample: pageText.substring(0, 500),
