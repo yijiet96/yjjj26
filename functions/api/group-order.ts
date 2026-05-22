@@ -85,29 +85,35 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
     );
 
-    // Intercept API requests + responses to find order data
+    // Use CDP to reliably capture response bodies (avoids body-already-consumed issue)
     const capturedResponses: { url: string; body: string }[] = [];
     const capturedRequests: { url: string; method: string; postData: string }[] = [];
 
-    page.on("request", (request) => {
-      const url = request.url();
+    const cdpClient = await page.createCDPSession();
+    await cdpClient.send("Network.enable");
+
+    const pendingRequests = new Map<string, { url: string; postData: string; method: string }>();
+
+    cdpClient.on("Network.requestWillBeSent", (params: any) => {
+      const url: string = params.request.url;
       if (url.includes("getDraftOrder") || url.includes("getGroupOrder")) {
-        capturedRequests.push({
-          url,
-          method: request.method(),
-          postData: request.postData() ?? "",
-        });
+        const postData = params.request.postData ?? "";
+        pendingRequests.set(params.requestId, { url, postData, method: params.request.method });
+        capturedRequests.push({ url, method: params.request.method, postData });
       }
     });
 
-    page.on("response", async (response) => {
-      const url = response.url();
-      if (url.includes("getDraftOrder") || url.includes("getGroupOrder")) {
-        try {
-          const body = await response.text();
-          if (body.length < 100000) capturedResponses.push({ url, body });
-        } catch { /* ignore */ }
-      }
+    cdpClient.on("Network.loadingFinished", async (params: any) => {
+      const req = pendingRequests.get(params.requestId);
+      if (!req) return;
+      pendingRequests.delete(params.requestId);
+      try {
+        const result: any = await cdpClient.send("Network.getResponseBody", { requestId: params.requestId });
+        const body: string = result.base64Encoded
+          ? Buffer.from(result.body, "base64").toString("utf-8")
+          : result.body;
+        if (body && body.length < 200000) capturedResponses.push({ url: req.url, body });
+      } catch { /* ignore */ }
     });
 
     const targetUrl = urlParam.replace("eats.uber.com", "www.ubereats.com");
@@ -357,28 +363,56 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       } catch { /* fall through */ }
     }
 
-    // Try parsing captured network responses as fallback
-    for (const { body } of capturedResponses) {
+    // Parse all captured CDP responses — this is now the primary extraction path
+    for (const { url, body } of capturedResponses) {
       try {
         const json = JSON.parse(body);
-        const data = json?.data || (json?.status === "success" ? json?.data : null);
-        const participants = data?.carts || data?.participants || data?.members || data?.cartViews;
-        if (participants?.length) {
+        // Try every known UberEats response envelope shape
+        const dataCandidates = [
+          json?.data,
+          json?.data?.draftOrder,
+          json?.data?.groupOrder,
+          json?.data?.draftOrders?.[0],
+          json?.status === "success" ? json?.data : null,
+        ].filter(Boolean);
+
+        for (const data of dataCandidates) {
+          const participants: any[] =
+            data?.carts || data?.participants || data?.members ||
+            data?.cartViews || data?.eaterCarts || [];
+          if (!participants.length) continue;
+
           const apiItems: { name: string; drink: string; price: number }[] = [];
-          const apiShop = data?.store?.title || data?.storeName || "";
+          const apiShop =
+            data?.store?.title || data?.storeName || data?.restaurant?.title ||
+            data?.restaurantName || "";
+
           for (const p of participants) {
-            const pName = (p.name || p.displayName || p.eaterName || p.participantName || "Unknown")
-              .replace(/\s*\(you\)/i, "").trim();
-            const cartItems = p.cartItems || p.items || p.cart?.items || p.shoppingCart?.cartItems || [];
+            const pName = (
+              p.name || p.displayName || p.eaterName || p.participantName ||
+              p.firstName || "Unknown"
+            ).replace(/\s*\(you\)/i, "").replace(/\s*\(您\)/, "").trim();
+
+            const cartItems: any[] =
+              p.cartItems || p.items || p.cart?.items ||
+              p.shoppingCart?.cartItems || p.shoppingCart?.items || [];
+
             for (const item of cartItems) {
-              const drink = item.title || item.name || item.itemName || item.catalogItem?.title || "";
-              const raw = item.price || item.unitPrice || item.totalPrice || item.amount || 0;
-              const price = Math.round(raw > 1000 ? raw / 100 : raw);
+              const drink =
+                item.title || item.name || item.itemName ||
+                item.catalogItem?.title || item.menuItem?.title || "";
+              const raw =
+                item.price || item.unitPrice || item.totalPrice ||
+                item.amount || item.subtotal || 0;
+              const price = Math.round(
+                typeof raw === "number" ? (raw > 1000 ? raw / 100 : raw) : 0
+              );
               if (drink) apiItems.push({ name: pName, drink, price });
             }
           }
+
           if (apiItems.length > 0) {
-            return Response.json({ success: true, shopName: apiShop, items: apiItems });
+            return Response.json({ success: true, shopName: apiShop, items: apiItems, source: url });
           }
         }
       } catch { /* not parseable JSON */ }
@@ -511,6 +545,8 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
         hasDraftOrderState: !!draftOrder,
         stateKeys: stateData ? Object.keys(stateData) : null,
         capturedApiUrls: capturedResponses.map((r) => r.url),
+        capturedResponseCount: capturedResponses.length,
+        capturedResponseSample: capturedResponses[0]?.body?.substring(0, 2000) ?? null,
         capturedRequests: capturedRequests.map((r) => ({ url: r.url, method: r.method, postData: r.postData.substring(0, 200) })),
         directApiUrl: directApiResult?.url ?? null,
         directApiSample: directApiResult?.body?.substring(0, 2000) ?? null,
