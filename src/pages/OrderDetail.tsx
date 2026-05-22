@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Send, Trash2, MoreVertical, ImageIcon, Copy, Check } from 'lucide-react';
+import { Send, Trash2, MoreVertical, ImageIcon, Copy, Check, Pencil } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -136,10 +136,18 @@ export default function OrderDetail() {
           </Button>
         )}
 
-        <Button variant="outline" className="w-full" onClick={copyOrderSummary}>
-          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          {copied ? '已複製' : '複製訂單摘要'}
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" className="w-full" onClick={copyOrderSummary}>
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? '已複製' : '複製摘要'}
+          </Button>
+          <Button variant="outline" className="w-full" asChild>
+            <Link to={`/orders/${order.id}/edit`}>
+              <Pencil className="h-4 w-4" />
+              編輯訂單
+            </Link>
+          </Button>
+        </div>
 
         {order.rawImageBase64 && (
           <Button variant="outline" className="w-full" onClick={() => setShowImage(true)}>

@@ -8,6 +8,7 @@ import ImportText from '@/pages/ImportText';
 import ImportUberEatsText from '@/pages/ImportUberEatsText';
 import ImportGroupOrder from '@/pages/ImportGroupOrder';
 import NewOrder from '@/pages/NewOrder';
+import EditOrder from '@/pages/EditOrder';
 import OrderDetail from '@/pages/OrderDetail';
 import OrderNotify from '@/pages/OrderNotify';
 import People from '@/pages/People';
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/import/group-order" element={<ImportGroupOrder />} />
           <Route path="/orders/new" element={<NewOrder />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
+          <Route path="/orders/:id/edit" element={<EditOrder />} />
           <Route path="/orders/:id/notify" element={<OrderNotify />} />
           <Route path="/people" element={<People />} />
           <Route path="/people/:id" element={<PersonDetail />} />
