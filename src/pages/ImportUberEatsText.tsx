@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Clipboard, Plus, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { useStore } from '@/lib/store';
 import { ntd } from '@/lib/format';
 import { findColleagueByAlias } from '@/lib/matching';
-import { parseUberEatsReceiptText } from '@/lib/ubereats-parser';
+import {
+  parseUberEatsReceiptText,
+  parseKaitugoText, isKaitugoFormat,
+  parseKaitugoGroupText, isKaitugoGroupFormat,
+} from '@/lib/ubereats-parser';
 
 type Step = 'paste' | 'review';
 
@@ -22,8 +26,19 @@ interface ReviewRow {
   newColleagueName: string;
 }
 
+function isoToDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function datetimeLocalToIso(val: string): string {
+  return new Date(val).toISOString();
+}
+
 export default function ImportUberEatsText() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const colleagues = useStore((s) => s.colleagues);
   const shops = useStore((s) => s.shops);
   const addColleague = useStore((s) => s.addColleague);
@@ -31,9 +46,10 @@ export default function ImportUberEatsText() {
   const addOrder = useStore((s) => s.addOrder);
 
   const [step, setStep] = useState<Step>('paste');
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => searchParams.get('text') ?? '');
   const [error, setError] = useState<string | null>(null);
   const [shopName, setShopName] = useState('');
+  const [orderDate, setOrderDate] = useState(() => isoToDatetimeLocal(new Date().toISOString()));
   const [rows, setRows] = useState<ReviewRow[]>([]);
 
   async function handlePaste() {
@@ -41,17 +57,23 @@ export default function ImportUberEatsText() {
       const clip = await navigator.clipboard.readText();
       setText(clip);
     } catch {
-      // clipboard read failed, user can type manually
+      // fallback: user pastes manually
     }
   }
 
   function handleParse() {
     setError(null);
-    const result = parseUberEatsReceiptText(text);
+    const result = isKaitugoGroupFormat(text)
+      ? parseKaitugoGroupText(text)
+      : isKaitugoFormat(text)
+        ? parseKaitugoText(text)
+        : parseUberEatsReceiptText(text);
     if (!result) {
-      setError('無法辨識格式。請確認貼上的是 UberEats 電子明細（包含姓名、數量、品項、金額）');
+      setError('無法辨識格式。請確認貼上的是 UberEats 電子明細或開圖購訂單明細');
       return;
     }
+    if (result.shopName) setShopName(result.shopName);
+    if (result.date) setOrderDate(isoToDatetimeLocal(result.date));
     const reviewRows: ReviewRow[] = result.items.map((it) => {
       const matched = findColleagueByAlias(colleagues, it.name);
       return {
@@ -119,14 +141,15 @@ export default function ImportUberEatsText() {
       shopName: shopName.trim(),
       items,
       source: 'manual',
-      note: '從電子明細匯入',
+      note: '從文字明細匯入',
+      createdAt: datetimeLocalToIso(orderDate),
     });
     navigate(`/orders/${order.id}`, { replace: true });
   }
 
   return (
     <div>
-      <PageHeader title="貼上 UberEats 電子明細" back />
+      <PageHeader title="文字明細貼上" back />
       <div className="space-y-4 p-4">
         {error && (
           <Card className="border-destructive/40 bg-destructive/10 p-3 text-sm">{error}</Card>
@@ -135,8 +158,11 @@ export default function ImportUberEatsText() {
         {step === 'paste' && (
           <>
             <Card className="bg-muted p-3 text-xs text-muted-foreground space-y-1">
-              <div className="font-medium text-foreground">如何取得電子明細文字</div>
-              <div>UberEats App → 訂單 → 訂單詳情 → 長按選取全部文字 → 複製</div>
+              <div className="font-medium text-foreground">支援格式</div>
+              <div>• <b>UberEats 電子明細</b>：訂單 → 訂單詳情 → 長按全選複製</div>
+              <div>• <b>開圖購（個人下單）</b>：含 account_circle 訂購人姓名 的明細</div>
+              <div>• <b>開圖購（各自加入）</b>：含 ＋收款 區塊分隔的明細</div>
+              <div className="mt-1">自動偵測格式，無需選擇</div>
             </Card>
 
             <div className="space-y-2">
@@ -146,7 +172,7 @@ export default function ImportUberEatsText() {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={12}
-                placeholder={`怡潔 (您)\n1\n玉露青茶\n$45.00\n微冰, 無糖\nClaire\n1\n蘋果玉露青\n$80.00\n…`}
+                placeholder={`貼上 UberEats 電子明細 或 開圖購訂單明細…\n\n【開圖購格式範例】\n春青菊花\nL / 無糖 / 少冰 / $55 / 1份\naccount_circle 訂購人姓名：怡潔`}
               />
             </div>
 
@@ -171,13 +197,23 @@ export default function ImportUberEatsText() {
                 value={shopName}
                 onChange={(e) => setShopName(e.target.value)}
                 list="shop-options"
-                placeholder="例：50 嵐"
+                placeholder="例：大茗本位製茶堂"
               />
               <datalist id="shop-options">
                 {shops.map((s) => (
                   <option key={s.id} value={s.name} />
                 ))}
               </datalist>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="order-date">訂單日期</Label>
+              <Input
+                id="order-date"
+                type="datetime-local"
+                value={orderDate}
+                onChange={(e) => setOrderDate(e.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
@@ -259,7 +295,7 @@ export default function ImportUberEatsText() {
             </Card>
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" onClick={() => setStep('paste')}>
+              <Button variant="outline" onClick={() => { setStep('paste'); setText(''); }}>
                 重新貼上
               </Button>
               <Button onClick={handleCreate} disabled={!canSubmit}>

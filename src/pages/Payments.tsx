@@ -19,6 +19,7 @@ const methodLabel: Record<PaymentMethod, string> = {
   linepay: 'LINE Pay',
   transfer: '轉帳',
   cash: '現金',
+  prepaid: '預付扣抵',
 };
 
 export default function Payments() {

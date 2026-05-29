@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useStore } from '@/lib/store';
-import { parsePaymentImage, friendlyAnthropicError } from '@/lib/anthropic';
+import { parsePaymentImage, friendlyAnthropicError, type PaymentParseItem } from '@/lib/anthropic';
 import { fileToBase64 } from '@/lib/image';
 import { findColleagueByAlias, unpaidItemsFor, matchByAmount } from '@/lib/matching';
 import { ntd, fmtDate, nowIso } from '@/lib/format';
@@ -29,6 +29,7 @@ const methodOptions: { value: PaymentMethod | 'unknown'; label: string }[] = [
   { value: 'linepay', label: 'LINE Pay' },
   { value: 'transfer', label: '銀行轉帳' },
   { value: 'cash', label: '現金' },
+  { value: 'prepaid', label: '預付扣抵' },
   { value: 'unknown', label: '其他' },
 ];
 
@@ -46,6 +47,7 @@ export default function ImportPayment() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastParseInfo, setLastParseInfo] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
 
   async function handleFiles(files: FileList | null) {
@@ -58,43 +60,63 @@ export default function ImportPayment() {
     setLoading(true);
     try {
       const newCandidates: Candidate[] = [];
+      const parseInfoLines: string[] = [];
       for (const file of Array.from(files)) {
         const base64 = await fileToBase64(file);
         const { data, usage } = await parsePaymentImage(apiKey, base64, model);
         bumpTokens((usage.input_tokens ?? 0) + (usage.output_tokens ?? 0));
-        const matched = findColleagueByAlias(colleagues, data.payerName ?? '');
-        const items = matched ? unpaidItemsFor(orders, matched.id) : [];
-        let selected: Candidate['selectedItems'] = [];
-        let status: Candidate['status'] = 'no_match';
-        if (matched) {
-          const m = matchByAmount(items, data.amount);
-          if (m.type !== 'none') {
-            selected = m.matched.map((i) => ({
-              orderId: i.orderId,
-              itemId: i.itemId,
-              drinkName: i.drinkName,
-              shopName: i.shopName,
-              price: i.price,
-            }));
-            status = m.type === 'exact' ? 'auto_exact' : 'auto_combo';
-          } else {
-            status = 'pending';
+        const payItems: PaymentParseItem[] = data.payments ?? [];
+        parseInfoLines.push(`${file.name}：AI 辨識出 ${payItems.length} 筆付款`);
+        for (const p of payItems) {
+          const matched = findColleagueByAlias(colleagues, p.payerName ?? '');
+          const items = matched ? unpaidItemsFor(orders, matched.id) : [];
+          let selected: Candidate['selectedItems'] = [];
+          let status: Candidate['status'] = 'no_match';
+          if (matched) {
+            const m = matchByAmount(items, p.amount);
+            if (m.type !== 'none') {
+              selected = m.matched.map((i) => ({
+                orderId: i.orderId,
+                itemId: i.itemId,
+                drinkName: i.drinkName,
+                shopName: i.shopName,
+                price: i.price,
+              }));
+              status = m.type === 'exact' ? 'auto_exact' : 'auto_combo';
+            } else {
+              status = 'pending';
+            }
           }
+          newCandidates.push({
+            id: crypto.randomUUID(),
+            imageBase64: base64,
+            payerNameRaw: p.payerName ?? '',
+            amount: p.amount,
+            method: p.method === 'unknown' ? 'transfer' : p.method,
+            receivedAt: p.receivedAt ?? nowIso(),
+            matchedColleagueId: matched?.id,
+            selectedItems: selected,
+            status,
+            notes: data.notes,
+          });
         }
-        newCandidates.push({
-          id: crypto.randomUUID(),
-          imageBase64: base64,
-          payerNameRaw: data.payerName ?? '',
-          amount: data.amount,
-          method: data.method === 'unknown' ? 'transfer' : data.method,
-          receivedAt: data.receivedAt ?? nowIso(),
-          matchedColleagueId: matched?.id,
-          selectedItems: selected,
-          status,
-          notes: data.notes,
-        });
+        if (payItems.length === 0) {
+          newCandidates.push({
+            id: crypto.randomUUID(),
+            imageBase64: base64,
+            payerNameRaw: '',
+            amount: 0,
+            method: 'transfer',
+            receivedAt: nowIso(),
+            matchedColleagueId: undefined,
+            selectedItems: [],
+            status: 'no_match',
+            notes: data.notes ?? '未能辨識任何付款記錄',
+          });
+        }
       }
       setCandidates((prev) => [...newCandidates, ...prev]);
+      setLastParseInfo(parseInfoLines.join('\n'));
     } catch (err) {
       setError(friendlyAnthropicError(err));
     } finally {
@@ -174,6 +196,9 @@ export default function ImportPayment() {
       <PageHeader title="付款通知匯入" back />
       <div className="space-y-3 p-4">
         {error && <Card className="border-destructive/40 bg-destructive/10 p-3 text-sm">{error}</Card>}
+        {lastParseInfo && (
+          <Card className="bg-muted p-3 text-xs text-muted-foreground whitespace-pre-wrap">{lastParseInfo}</Card>
+        )}
 
         <Card
           className="p-6 border-dashed flex flex-col items-center justify-center text-center cursor-pointer hover:bg-accent transition-colors"

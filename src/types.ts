@@ -1,10 +1,11 @@
-export type PaymentMethod = 'linepay' | 'transfer' | 'cash';
+export type PaymentMethod = 'linepay' | 'transfer' | 'cash' | 'prepaid';
 
 export interface Colleague {
   id: string;
   name: string;
   aliases: string[];
   lineDisplayName?: string;
+  prepaidBalance?: number;
   createdAt: string;
 }
 

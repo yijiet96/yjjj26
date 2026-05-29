@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
 import { BottomNav } from '@/components/BottomNav';
 import Home from '@/pages/Home';
 import Import from '@/pages/Import';
@@ -19,10 +20,40 @@ import Payments from '@/pages/Payments';
 import Settings from '@/pages/Settings';
 import ShortcutGuide from '@/pages/ShortcutGuide';
 
+// Fires ONLY on visibilitychange (app comes to foreground) — not on every click/navigation
+function ClipboardRedirect() {
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+
+  useEffect(() => {
+    const onVisible = async () => {
+      if (document.visibilityState !== 'visible') return;
+      if (window.location.pathname === '/import/group-order') return;
+      try {
+        const text = await navigator.clipboard.readText();
+        if (
+          text &&
+          text.includes('group-order') &&
+          (text.includes('ubereats.com') || text.includes('eats.uber.com'))
+        ) {
+          navigateRef.current('/import/group-order');
+        }
+      } catch { /* permission denied */ }
+    };
+
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []); // empty deps — listener registered once, never torn down on route change
+
+  return null;
+}
+
 export default function App() {
   return (
     <div className="flex min-h-dvh flex-col">
       <main className="mx-auto w-full max-w-screen-sm flex-1 safe-bottom">
+        <ClipboardRedirect />
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/import" element={<Import />} />

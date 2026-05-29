@@ -28,6 +28,7 @@ const methodLabel: Record<PaymentMethod, string> = {
   linepay: 'LINE Pay',
   transfer: '轉帳',
   cash: '現金',
+  prepaid: '預付扣抵',
 };
 
 export default function OrderDetail() {
@@ -219,6 +220,25 @@ export default function OrderDetail() {
                   </>
                 ) : (
                   <>
+                    {(() => {
+                      const c = colMap.get(activeItem.colleagueId);
+                      const bal = c?.prepaidBalance ?? 0;
+                      if (bal >= activeItem.price) {
+                        return (
+                          <Button className="w-full bg-violet-600 hover:bg-violet-700" onClick={() => handlePay('prepaid')}>
+                            預付餘額扣抵（剩 {ntd(bal)}）
+                          </Button>
+                        );
+                      }
+                      if (bal > 0) {
+                        return (
+                          <div className="text-xs text-muted-foreground px-1">
+                            預付餘額 {ntd(bal)}，不足以扣抵此項（{ntd(activeItem.price)}）
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     <Button className="w-full" onClick={() => handlePay('linepay')}>
                       LINE Pay 已收
                     </Button>

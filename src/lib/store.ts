@@ -30,6 +30,7 @@ interface Actions {
   mergeColleagues: (sourceId: string, targetId: string) => void;
   addAlias: (colleagueId: string, alias: string) => void;
   removeAlias: (colleagueId: string, alias: string) => void;
+  topUpBalance: (colleagueId: string, amount: number) => void;
   addShop: (name: string) => Shop;
   addOrder: (input: {
     shopName: string;
@@ -37,6 +38,7 @@ interface Actions {
     source?: Order['source'];
     rawImageBase64?: string;
     note?: string;
+    createdAt?: string;
   }) => Order;
   updateOrder: (id: string, patch: Partial<Order>) => void;
   deleteOrder: (id: string) => void;
@@ -119,6 +121,14 @@ export const useStore = create<AppState & Actions>()(
             c.id === colleagueId ? { ...c, aliases: c.aliases.filter((a) => a !== alias) } : c,
           ),
         })),
+      topUpBalance: (colleagueId, amount) =>
+        set((s) => ({
+          colleagues: s.colleagues.map((c) =>
+            c.id === colleagueId
+              ? { ...c, prepaidBalance: (c.prepaidBalance ?? 0) + amount }
+              : c,
+          ),
+        })),
       addShop: (name) => {
         const trimmed = name.trim();
         const existing = get().shops.find((s) => s.name === trimmed);
@@ -127,7 +137,7 @@ export const useStore = create<AppState & Actions>()(
         set((s) => ({ shops: [...s.shops, shop] }));
         return shop;
       },
-      addOrder: ({ shopName, items, source = 'manual', rawImageBase64, note }) => {
+      addOrder: ({ shopName, items, source = 'manual', rawImageBase64, note, createdAt }) => {
         const shop = get().addShop(shopName);
         const order: Order = {
           id: nanoid(),
@@ -135,7 +145,7 @@ export const useStore = create<AppState & Actions>()(
           shopName: shop.name,
           source,
           rawImageBase64,
-          createdAt: nowIso(),
+          createdAt: createdAt ?? nowIso(),
           note,
           items: items.map((it) => ({ ...it, id: nanoid(), paid: false })),
         };
@@ -148,20 +158,32 @@ export const useStore = create<AppState & Actions>()(
         })),
       deleteOrder: (id) => set((s) => ({ orders: s.orders.filter((o) => o.id !== id) })),
       setItemPaid: (orderId, itemId, method) =>
-        set((s) => ({
-          orders: s.orders.map((o) =>
-            o.id === orderId
-              ? {
-                  ...o,
-                  items: o.items.map((i) =>
-                    i.id === itemId
-                      ? { ...i, paid: true, paymentMethod: method, paidAt: nowIso() }
-                      : i,
-                  ),
-                }
-              : o,
-          ),
-        })),
+        set((s) => {
+          const item = s.orders.find((o) => o.id === orderId)?.items.find((i) => i.id === itemId);
+          const colleagues =
+            method === 'prepaid' && item
+              ? s.colleagues.map((c) =>
+                  c.id === item.colleagueId
+                    ? { ...c, prepaidBalance: Math.max(0, (c.prepaidBalance ?? 0) - item.price) }
+                    : c,
+                )
+              : s.colleagues;
+          return {
+            colleagues,
+            orders: s.orders.map((o) =>
+              o.id === orderId
+                ? {
+                    ...o,
+                    items: o.items.map((i) =>
+                      i.id === itemId
+                        ? { ...i, paid: true, paymentMethod: method, paidAt: nowIso() }
+                        : i,
+                    ),
+                  }
+                : o,
+            ),
+          };
+        }),
       setItemUnpaid: (orderId, itemId) =>
         set((s) => ({
           orders: s.orders.map((o) =>

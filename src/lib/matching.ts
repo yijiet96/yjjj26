@@ -7,10 +7,14 @@ export function findColleagueByAlias(
   if (!raw) return undefined;
   const norm = raw.trim().toLowerCase();
   if (!norm) return undefined;
+
+  // Pass 1: exact match
   for (const c of colleagues) {
     if (c.name.toLowerCase() === norm) return c;
     if (c.aliases.some((a) => a.toLowerCase() === norm)) return c;
   }
+
+  // Pass 2: substring match
   for (const c of colleagues) {
     if (c.name.toLowerCase().includes(norm) || norm.includes(c.name.toLowerCase())) return c;
     if (c.aliases.some((a) => {
@@ -18,6 +22,24 @@ export function findColleagueByAlias(
       return al.includes(norm) || norm.includes(al);
     })) return c;
   }
+
+  // Pass 3: masked name (LINE Pay format "林*" or "吳*澄")
+  if (norm.includes('*')) {
+    const starIdx = norm.indexOf('*');
+    const prefix = norm.slice(0, starIdx);
+    const suffix = norm.slice(starIdx + 1);
+    const matchesName = (name: string) => {
+      const n = name.toLowerCase();
+      if (prefix && !n.startsWith(prefix)) return false;
+      if (suffix && !n.endsWith(suffix)) return false;
+      // name must be longer than prefix+suffix (the * represents ≥1 char)
+      return n.length > prefix.length + suffix.length;
+    };
+    for (const c of colleagues) {
+      if (matchesName(c.name) || c.aliases.some((a) => matchesName(a))) return c;
+    }
+  }
+
   return undefined;
 }
 

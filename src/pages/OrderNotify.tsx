@@ -121,7 +121,7 @@ export default function OrderNotify() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium">{g.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">
+                  <div className="text-xs text-muted-foreground">
                     {g.drinks.join('、')}
                   </div>
                 </div>

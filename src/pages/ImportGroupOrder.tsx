@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Link2, Loader2, Plus, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { useStore } from '@/lib/store';
 import { ntd } from '@/lib/format';
 import { findColleagueByAlias } from '@/lib/matching';
 
-type Step = 'input' | 'review';
+type Step = 'input' | 'mapping' | 'review';
 
 interface ReviewRow {
   rawName: string;
@@ -20,8 +20,16 @@ interface ReviewRow {
   newColleagueName: string;
 }
 
+interface NameMapping {
+  rawId: string;
+  hint: string; // all drinks for this uuid, used as identification hint
+  colleagueId: string;
+  newColleagueName: string;
+}
+
 export default function ImportGroupOrder() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const colleagues = useStore((s) => s.colleagues);
   const shops = useStore((s) => s.shops);
   const addColleague = useStore((s) => s.addColleague);
@@ -29,12 +37,28 @@ export default function ImportGroupOrder() {
   const addOrder = useStore((s) => s.addOrder);
 
   const [step, setStep] = useState<Step>('input');
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(() => searchParams.get('url') ?? '');
+
+  useEffect(() => {
+    if (url) return;
+    const tryClipboard = async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && (text.includes('ubereats.com') || text.includes('eats.uber.com'))) {
+          setUrl(text.trim());
+        }
+      } catch { /* permission denied or not supported */ }
+    };
+    const t = setTimeout(tryClipboard, 400);
+    return () => clearTimeout(t);
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [shopName, setShopName] = useState('');
   const [rows, setRows] = useState<ReviewRow[]>([]);
+  const [mappings, setMappings] = useState<NameMapping[]>([]);
 
   async function handleFetch() {
     if (!url.trim()) return;
@@ -61,21 +85,44 @@ export default function ImportGroupOrder() {
 
       if (data.success && data.items?.length) {
         const reviewRows: ReviewRow[] = data.items.map((it: any) => {
-          const matched = findColleagueByAlias(colleagues, it.name);
+          const isUnknown = String(it.name).startsWith('?');
+          const matched = isUnknown ? null : findColleagueByAlias(colleagues, it.name);
           return {
             rawName: it.name,
             drinkName: it.drink,
             price: String(it.price),
             colleagueId: matched?.id ?? '',
-            newColleagueName: matched ? '' : it.name,
+            newColleagueName: matched ? '' : (isUnknown ? '' : it.name),
           };
         });
         setShopName(data.shopName || '');
         setRows(reviewRows);
-        if (data.needsNameMapping) {
-          setHint(`⚠️ 無法取得點餐者姓名，名字欄顯示為 UUID 前綴，請在下方手動對應同事。draftOrderKeys: ${JSON.stringify(data.draftOrderKeys)}`);
+
+        // Collect unique ?uuid IDs that need mapping
+        const unknownIds = [...new Set(
+          reviewRows.filter((r) => r.rawName.startsWith('?')).map((r) => r.rawName)
+        )];
+
+        if (unknownIds.length > 0) {
+          // Build hint: all drink names for each uuid
+          const idMappings: NameMapping[] = unknownIds.map((id) => {
+            const drinks = reviewRows
+              .filter((r) => r.rawName === id)
+              .map((r) => `${r.drinkName} $${r.price}`)
+              .join('、');
+            const matched = findColleagueByAlias(colleagues, id);
+            return {
+              rawId: id,
+              hint: drinks,
+              colleagueId: matched?.id ?? '',
+              newColleagueName: '',
+            };
+          });
+          setMappings(idMappings);
+          setStep('mapping');
+        } else {
+          setStep('review');
         }
-        setStep('review');
         return;
       }
 
@@ -83,9 +130,7 @@ export default function ImportGroupOrder() {
         const debugInfo = data.debug ? JSON.stringify(data.debug) : '';
         const pageTextSnippet = data.pageText ? `\n\nPageText (first 500):\n${data.pageText.substring(0, 500)}` : '';
         setError(`自動解析失敗。Debug: ${debugInfo}${pageTextSnippet}`);
-        if (data.screenshot) {
-          setHint(data.screenshot);
-        }
+        if (data.screenshot) setHint(data.screenshot);
         return;
       }
 
@@ -95,6 +140,26 @@ export default function ImportGroupOrder() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function updateMapping(i: number, patch: Partial<NameMapping>) {
+    setMappings((ms) => ms.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
+  }
+
+  function applyMappings() {
+    const idToMap: Record<string, Pick<NameMapping, 'colleagueId' | 'newColleagueName'>> = {};
+    for (const m of mappings) {
+      idToMap[m.rawId] = { colleagueId: m.colleagueId, newColleagueName: m.newColleagueName };
+    }
+    setRows((rs) =>
+      rs.map((r) => {
+        if (!r.rawName.startsWith('?')) return r;
+        const m = idToMap[r.rawName];
+        if (!m) return r;
+        return { ...r, colleagueId: m.colleagueId, newColleagueName: m.newColleagueName };
+      })
+    );
+    setStep('review');
   }
 
   function updateRow(i: number, patch: Partial<ReviewRow>) {
@@ -126,10 +191,10 @@ export default function ImportGroupOrder() {
       if (!colleagueId && r.newColleagueName.trim()) {
         const c = addColleague(r.newColleagueName.trim());
         colleagueId = c.id;
-        if (r.rawName && r.rawName !== r.newColleagueName.trim()) {
+        if (r.rawName && !r.rawName.startsWith('?') && r.rawName !== r.newColleagueName.trim()) {
           addAlias(c.id, r.rawName);
         }
-      } else if (colleagueId && r.rawName) {
+      } else if (colleagueId && r.rawName && !r.rawName.startsWith('?')) {
         const existing = colleagues.find((c) => c.id === colleagueId);
         const norm = r.rawName.trim().toLowerCase();
         if (
@@ -173,6 +238,7 @@ export default function ImportGroupOrder() {
           )
         )}
 
+        {/* ── Step 1: URL input ── */}
         {step === 'input' && (
           <>
             <Card className="bg-muted p-3 text-xs text-muted-foreground space-y-1">
@@ -204,6 +270,59 @@ export default function ImportGroupOrder() {
           </>
         )}
 
+        {/* ── Step 2: Batch name mapping ── */}
+        {step === 'mapping' && (
+          <>
+            <Card className="bg-amber-500/10 border-amber-500/30 p-3 text-sm space-y-1">
+              <div className="font-medium">對應點餐者（共 {mappings.length} 位）</div>
+              <div className="text-xs text-muted-foreground">系統無法自動取得部分點餐者姓名，請依飲料對應同事後繼續</div>
+            </Card>
+
+            <div className="space-y-2">
+              {mappings.map((m, i) => (
+                <Card key={m.rawId} className="p-3 space-y-1.5">
+                  <div className="text-sm font-medium truncate">{m.hint || m.rawId}</div>
+                  <select
+                    value={m.colleagueId || (m.newColleagueName ? '__new__' : '')}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        updateMapping(i, { colleagueId: '', newColleagueName: '新同事' });
+                      } else {
+                        updateMapping(i, { colleagueId: e.target.value, newColleagueName: '' });
+                      }
+                    }}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">-- 選擇同事 --</option>
+                    {colleagues.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                    <option value="__new__">＋ 建立新同事</option>
+                  </select>
+                  {!m.colleagueId && m.newColleagueName && (
+                    <Input
+                      value={m.newColleagueName}
+                      onChange={(e) => updateMapping(i, { newColleagueName: e.target.value })}
+                      placeholder="新同事的稱呼"
+                      className="h-9"
+                    />
+                  )}
+                </Card>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" onClick={() => setStep('review')}>
+                略過，直接確認
+              </Button>
+              <Button onClick={applyMappings}>
+                套用 →
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* ── Step 3: Review ── */}
         {step === 'review' && (
           <>
             <div className="space-y-2">
@@ -226,13 +345,17 @@ export default function ImportGroupOrder() {
               <Label>解析結果（請確認）</Label>
               {rows.map((row, i) => {
                 const matched = colleagues.find((c) => c.id === row.colleagueId);
-                const isNewName = !matched && row.rawName;
+                const isUnknown = row.rawName.startsWith('?');
+                const isNewName = !matched && !isUnknown && row.rawName;
                 return (
                   <Card key={i} className="p-3 space-y-2">
                     <div className="flex items-start gap-2">
                       <div className="flex-1 space-y-2">
                         <div className="text-xs text-muted-foreground">
-                          名字：<span className="font-mono">{row.rawName || '—'}</span>
+                          {isUnknown
+                            ? <span className="text-amber-600">未對應</span>
+                            : <span>名字：<span className="font-mono">{row.rawName || '—'}</span></span>
+                          }
                           {matched && (
                             <span className="ml-2 text-emerald-600">✓ 對應「{matched.name}」</span>
                           )}
@@ -242,7 +365,7 @@ export default function ImportGroupOrder() {
                           value={row.colleagueId || (row.newColleagueName ? '__new__' : '')}
                           onChange={(e) => {
                             if (e.target.value === '__new__') {
-                              updateRow(i, { colleagueId: '', newColleagueName: row.rawName });
+                              updateRow(i, { colleagueId: '', newColleagueName: row.rawName.startsWith('?') ? '' : row.rawName });
                             } else {
                               updateRow(i, { colleagueId: e.target.value, newColleagueName: '' });
                             }
@@ -301,8 +424,8 @@ export default function ImportGroupOrder() {
             </Card>
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" onClick={() => setStep('input')}>
-                重新輸入
+              <Button variant="outline" onClick={() => setStep(mappings.length > 0 ? 'mapping' : 'input')}>
+                {mappings.length > 0 ? '回名字對應' : '重新輸入'}
               </Button>
               <Button onClick={handleCreate} disabled={!canSubmit}>
                 建立訂單

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Trash2, X, Plus, GitMerge } from 'lucide-react';
+import { Trash2, X, Plus, GitMerge, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -29,6 +29,7 @@ export default function PersonDetail() {
   const removeAlias = useStore((s) => s.removeAlias);
   const deleteColleague = useStore((s) => s.deleteColleague);
   const mergeColleagues = useStore((s) => s.mergeColleagues);
+  const topUpBalance = useStore((s) => s.topUpBalance);
 
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(colleague?.name ?? '');
@@ -37,6 +38,7 @@ export default function PersonDetail() {
   const [showDelete, setShowDelete] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
   const [mergeTarget, setMergeTarget] = useState('');
+  const [topUpAmount, setTopUpAmount] = useState('');
 
   if (!colleague) {
     return (
@@ -167,6 +169,49 @@ export default function PersonDetail() {
           <div className="mt-2 text-xs text-muted-foreground">
             匯入截圖時，AI 解析到這些名字會自動配對到此同事
           </div>
+        </Card>
+
+        <Card className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Wallet className="h-3.5 w-3.5" />
+                預付餘額
+              </div>
+              <div className={`text-2xl font-semibold tabular-nums ${(colleague.prepaidBalance ?? 0) > 0 ? 'text-violet-600' : ''}`}>
+                {ntd(colleague.prepaidBalance ?? 0)}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              inputMode="numeric"
+              value={topUpAmount}
+              onChange={(e) => setTopUpAmount(e.target.value)}
+              placeholder="儲值金額"
+              className="h-9"
+            />
+            <Button
+              size="sm"
+              onClick={() => {
+                const n = Math.round(Number(topUpAmount));
+                if (n > 0) {
+                  topUpBalance(colleague.id, n);
+                  setTopUpAmount('');
+                }
+              }}
+              disabled={!(Number(topUpAmount) > 0)}
+            >
+              <Plus className="h-4 w-4" />
+              儲值
+            </Button>
+          </div>
+          {(colleague.prepaidBalance ?? 0) > 0 && (
+            <div className="text-xs text-muted-foreground">
+              訂單付款時選「預付扣抵」即可自動扣除餘額
+            </div>
+          )}
         </Card>
 
         <Card className="p-3">
