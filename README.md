@@ -1,7 +1,7 @@
 # DrinkRun v2 · 飲料代訂智慧記帳本
 
 > 給經常用 UberEats 幫同事訂飲料的 iPhone 使用者用的 PWA。
-> AI 輔助：截圖匯入訂單、付款通知自動解析、一鍵生成 LINE 通知訊息。
+> AI 輔助：截圖匯入訂單、團購網址自動解析、付款通知自動解析、一鍵生成 LINE 通知訊息。
 
 ---
 
@@ -16,7 +16,9 @@
    開 `http://localhost:5173`。
 3. **設定金鑰**：App 進到 **設定 → AI 解析**，貼上 API key，按「測試連線」確認 OK，按「儲存」。
 4. **第一筆訂單**：
-   - 有 UberEats 團購截圖 → **匯入 → UberEats 訂單截圖**，AI 解析後確認。
+   - 有 UberEats 團購連結 → **匯入 → UberEats 團購網址**，自動讀取所有人訂單（無需截圖、無需 API key）。
+   - 有 UberEats 截圖 → **匯入 → UberEats 訂單截圖**，AI 解析後確認。
+   - 有開圖購明細文字 → **匯入 → 文字明細貼上**，免截圖免 AI。
    - 沒截圖 → 首頁 **手動建立**。
 5. **收到付款通知** → **匯入 → 付款通知截圖**，AI 配對 → 確認標記已付。
 6. **催款** → 訂單詳情點「通知未付者」→ 對每人「在 LINE 開啟」。
@@ -106,7 +108,10 @@ npx vercel
 
 | 情境 | 怎麼做 |
 | --- | --- |
-| 我用 UberEats 揪同事訂飲料 | App 內 **匯入 → UberEats 訂單截圖** → 選截圖 → 裁切（可選）→ AI 解析 → 確認每個名字對應的同事 → 建立訂單 |
+| UberEats 團購（最推薦） | App 內 **匯入 → UberEats 團購網址**，貼上分享連結，系統以「DrinkRun」身份加入並自動讀取所有人訂單、金額 |
+| 有 UberEats 訂單截圖 | **匯入 → UberEats 訂單截圖** → 選截圖 → 裁切（可選）→ AI 解析 → 確認名字對應 → 建立訂單 |
+| 開圖購文字明細 | **匯入 → 文字明細貼上** → 長按全選複製開圖購明細貼上 → 自動解析，免截圖免 AI |
+| 任意文字 / 連結 | 匯入頁**長按貼上框**，自動偵測：UberEats 連結 → 團購流程；開圖購格式 → 文字解析；其他 → AI 解析 |
 | 我自己跑腿買 | 首頁 **手動建立** → 一行一筆輸入 |
 
 第一次匯入時，每個新名字都會跳「這是誰？」對話框，你選 **建立新同事** 或 **對應到既有同事**。下次同一個名字出現會自動配對（截圖名字會自動進 aliases）。
@@ -159,6 +164,7 @@ npx vercel
 - `@anthropic-ai/sdk`（前端直接呼叫，`dangerouslyAllowBrowser: true`）
 - react-image-crop
 - vite-plugin-pwa（manifest + Workbox SW）
+- Cloudflare Pages Functions + `@cloudflare/puppeteer`（Browser Workers，UberEats 團購爬蟲）
 
 模型預設 `claude-sonnet-4-5`，可在設定切到 `claude-opus-4-7`（解析品質更高、成本更高）。
 
@@ -171,6 +177,7 @@ npx vercel
 - 沒有後端、沒有多人協作、沒有跨裝置同步（v3+ 可能加）
 - 不支援 Chrome on iOS 加主畫面（必須 Safari）
 - 一次匯入太多張截圖會撞 Anthropic rate limit，慢慢來
+- UberEats 團購網址匯入：無法自動對應 UUID 到姓名時（UberEats API 未回傳名字），需手動對應飲料 → 同事（約 10 秒）
 
 ---
 
