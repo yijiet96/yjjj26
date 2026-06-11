@@ -1,0 +1,308 @@
+# =====================================================================
+# factors.yaml — 因子總表
+# direction: +1 表示「因子值越大越看好」,-1 表示「越小越看好」(計算 z 分數後乘上 direction)
+# availability: 該因子適用的市場;籌碼面多為台股獨有
+# weight: 構面「內」的相對權重(同構面內加總正規化);構面間權重見 construct_weights
+# lookback_days: 需要回溯的交易日數(技術/籌碼類)
+# =====================================================================
+
+meta:
+  rebalance: monthly                 # 月底再平衡
+  standardization: zscore            # 橫斷面 z-score
+  winsorize: [0.01, 0.99]            # 去極值分位
+  sector_neutral: true               # 產業中性化
+  separate_markets: true             # 台股、美股分開標準化,絕不混池
+  # 缺漏值 fallback 鏈:產業中位數 → 整個產業皆缺則退回全市場中位數 → 仍無則排除該因子並重新正規化權重。
+  # 例外:type=event 因子改用各自的 missing 值(通常為 0),且 standardize:false 不走此流程。
+  missing_value: "sector_median -> market_median -> drop_and_renormalize"
+
+# 構面間權重(四大綜合分數的合成權重,加總 = 1)
+# 註:被動資金/分點類因子權重刻意偏低——它們是「煙霧」,基本面才是「火」;
+#     且效應會隨套利衰減,過重易過度擬合。某市場缺資料時,權重自動重新正規化。
+construct_weights:
+  fundamental: 0.40
+  chip: 0.25
+  technical: 0.25
+  passive_flow: 0.10                 # 台股 ETF 被動買盤 + 指數納入效應;美股以指數納入對應
+
+# =====================================================================
+# 一、基本面(Fundamental)
+# =====================================================================
+fundamental:
+  # --- 價值 Value (FF3 HML) ---
+  value_ep:
+    desc: "益本比 = 近四季EPS / 股價(本益比倒數,避免負值排序問題)"
+    direction: 1
+    weight: 1.0
+    availability: [TW, US]
+    theory: "Fama-French (1992)"
+  value_bm:
+    desc: "淨值市值比 = 每股淨值 / 股價"
+    direction: 1
+    weight: 1.0
+    availability: [TW, US]
+    theory: "Fama-French HML"
+  value_ev_ebitda:
+    desc: "EV / EBITDA"
+    direction: -1
+    weight: 0.8
+    availability: [TW, US]
+  value_ps:
+    desc: "股價營收比 = 市值 / 近四季營收"
+    direction: -1
+    weight: 0.6
+    availability: [TW, US]
+  value_fcf_yield:
+    desc: "自由現金流殖利率 = FCF / 市值"
+    direction: 1
+    weight: 0.8
+    availability: [TW, US]
+  value_div_yield:
+    desc: "股息殖利率 = 近12月現金股利 / 股價"
+    direction: 1
+    weight: 0.6
+    availability: [TW, US]
+
+  # --- 品質/獲利 Quality ---
+  quality_gpa:
+    desc: "毛利資產比 = 毛利 / 總資產"
+    direction: 1
+    weight: 1.0
+    availability: [TW, US]
+    theory: "Novy-Marx (2013)"
+  quality_roe:
+    desc: "股東權益報酬率"
+    direction: 1
+    weight: 0.8
+    availability: [TW, US]
+    theory: "FF5 RMW"
+  quality_roic:
+    desc: "投入資本報酬率"
+    direction: 1
+    weight: 0.6
+    availability: [TW, US]
+  quality_piotroski_f:
+    desc: "Piotroski F-Score(0~9 分財務健全度)"
+    direction: 1
+    weight: 1.0
+    availability: [TW, US]
+    theory: "Piotroski (2000)"
+  quality_accruals:
+    desc: "應計項目 = (淨利 − 營業現金流) / 總資產"
+    direction: -1
+    weight: 0.8
+    availability: [TW, US]
+    theory: "Sloan (1996)"
+  quality_debt_ratio:
+    desc: "負債比 = 總負債 / 總資產"
+    direction: -1
+    weight: 0.5
+    availability: [TW, US]
+
+  # --- 成長/投資 Growth & Investment ---
+  growth_revenue_yoy:
+    desc: "近四季營收年增率"
+    direction: 1
+    weight: 0.8
+    availability: [TW, US]
+  growth_eps_yoy:
+    desc: "EPS 年增率"
+    direction: 1
+    weight: 0.8
+    availability: [TW, US]
+  invest_asset_growth:
+    desc: "總資產年增率(高投資反而報酬低,故反向)"
+    direction: -1
+    weight: 0.6
+    availability: [TW, US]
+    theory: "FF5 CMA"
+
+# =====================================================================
+# 二、籌碼面(Chip / Ownership)— 台股核心,美股以替代欄位處理
+# =====================================================================
+chip:
+  chip_foreign_net:
+    desc: "外資近N日買賣超 / 流通股數"
+    direction: 1
+    weight: 1.0
+    lookback_days: 20
+    availability: [TW]
+  chip_trust_net:
+    desc: "投信近N日買賣超 / 流通股數(波段指標)"
+    direction: 1
+    weight: 1.0
+    lookback_days: 20
+    availability: [TW]
+  chip_dealer_net:
+    desc: "自營商近N日買賣超(含避險,雜訊大,權重低)"
+    direction: 1
+    weight: 0.4
+    lookback_days: 20
+    availability: [TW]
+  chip_inst_holding_chg:
+    desc: "三大法人合計持股比率N日變化"
+    direction: 1
+    weight: 0.8
+    lookback_days: 20
+    availability: [TW]
+  chip_margin_chg:
+    desc: "融資餘額N日變化率(散戶過熱訊號,反向)"
+    direction: -1
+    weight: 0.6
+    lookback_days: 20
+    availability: [TW]
+  chip_short_margin_ratio:
+    desc: "券資比 = 融券餘額 / 融資餘額(軋空潛能)"
+    direction: 1
+    weight: 0.4
+    availability: [TW]
+  chip_big_holder_chg:
+    desc: "千張大戶持股比N日變化(集保)"
+    direction: 1
+    weight: 0.8
+    lookback_days: 20
+    availability: [TW]
+  chip_branch_concentration:
+    desc: "分點買超集中度 = 前N大買超分點淨買 / 區間總成交量(主力吸籌 proxy)"
+    direction: 1
+    weight: 0.6
+    lookback_days: 20
+    availability: [TW]
+  chip_smart_branch_net:
+    desc: "優勢分點淨買超(以滾動歷史勝率動態篩選分點,勿寫死人名)。雜訊大、權重低、僅輔助"
+    direction: 1
+    weight: 0.3
+    lookback_days: 20
+    availability: [TW]
+    caveat: "分點可拆單/對敲/隔日沖製造假訊號;用集中度與滾動勝率,不盲目跟單特定券商"
+  chip_pledge_ratio:
+    desc: "董監持股質押比(風險指標)"
+    direction: -1
+    weight: 0.5
+    availability: [TW]
+  # --- 美股替代:機構/放空/內部人 ---
+  chip_us_13f_chg:
+    desc: "機構持股(13F)季度變化"
+    direction: 1
+    weight: 1.0
+    availability: [US]
+  chip_us_short_interest:
+    desc: "放空比率 = 放空股數 / 流通股(過高為風險)"
+    direction: -1
+    weight: 0.6
+    availability: [US]
+  chip_us_insider:
+    desc: "內部人(Form 4)淨買賣"
+    direction: 1
+    weight: 0.8
+    availability: [US]
+
+# =====================================================================
+# 三、技術面(Technical / Momentum & Trend)
+# =====================================================================
+technical:
+  tech_momentum_12_1:
+    desc: "動能:過去12個月報酬,扣除最近1個月"
+    direction: 1
+    weight: 1.0
+    lookback_days: 252
+    skip_recent_days: 21
+    availability: [TW, US]
+    theory: "Jegadeesh-Titman (1993) / Carhart UMD"
+  tech_reversal_1m:
+    desc: "短期反轉:最近1個月報酬(反向)"
+    direction: -1
+    weight: 0.6
+    lookback_days: 21
+    availability: [TW, US]
+    theory: "Lehmann (1990)"
+  tech_52w_high:
+    desc: "52週高點接近度 = 現價 / 過去52週最高價"
+    direction: 1
+    weight: 0.8
+    lookback_days: 252
+    availability: [TW, US]
+    theory: "George & Hwang (2004)"
+  tech_rel_strength:
+    desc: "相對強弱 = 個股報酬 − 對應市場大盤報酬"
+    direction: 1
+    weight: 0.8
+    lookback_days: 60
+    availability: [TW, US]
+  tech_ma_alignment:
+    desc: "均線多頭排列:收盤 > MA20 > MA60 > MA120(計分)"
+    direction: 1
+    weight: 0.6
+    availability: [TW, US]
+  tech_volume_confirm:
+    desc: "量能:近N日均量 / 過去均量(量價配合)"
+    direction: 1
+    weight: 0.4
+    lookback_days: 20
+    availability: [TW, US]
+  tech_low_volatility:
+    desc: "歷史波動度(年化報酬標準差),低波動異常"
+    direction: -1
+    weight: 0.8
+    lookback_days: 120
+    availability: [TW, US]
+    theory: "Frazzini-Pedersen BAB"
+  tech_beta:
+    desc: "對市場 beta(Betting Against Beta,低beta看好)"
+    direction: -1
+    weight: 0.6
+    lookback_days: 252
+    availability: [TW, US]
+
+# =====================================================================
+# 四、被動資金與 ETF 效應(Passive Flow)— 台股近年關鍵
+# 註:此構面捕捉與基本面無關的被動供需衝擊。效應會隨套利衰減,故權重低、需樣本外驗證。
+#     event 型因子(納入/剔除)以「生效日前後的時間衰減分數」處理,生效後設出場,勿長抱。
+# =====================================================================
+passive_flow:
+  flow_etf_estimated_buy:
+    desc: "ETF推估被動買盤 = Σ(主要ETF近N日淨申購額 × 個股在該ETF權重) / 個股流通市值"
+    direction: 1
+    weight: 1.0
+    lookback_days: 20
+    availability: [TW]
+    data_note: "ETF淨申購來自投信投顧公會/各投信;成分權重來自ETF公開持股"
+  flow_index_inclusion:
+    desc: "指數/ETF 納入剔除事件分數(納入正、剔除負,生效日前後時間衰減)"
+    type: event
+    standardize: false                 # 稀疏事件,不走 winsorize/zscore/中性化;當作有上限的傾斜量
+    missing: 0                          # 非事件補 0(覆蓋全域 sector_median)
+    direction: 1
+    weight: 0.6
+    availability: [TW, US]
+    theory: "指數效應 Shleifer(1986)、Chen-Noronha-Singal(2004);效應隨套利衰減,屬短期"
+    decay: "於生效日前數日建立、生效後逐步歸零並出場"
+  flow_dividend_theme:
+    desc: "高股息ETF題材成分歸屬(0056/00878/00919/00940等),加權其規模"
+    direction: 1
+    weight: 0.3
+    availability: [TW]
+    caveat: "regime 依賴,勿過度擬合 2023-2024 熱潮;權重低,且高ETF持股佔比另列風險旗標"
+  flow_us_index_inclusion:
+    desc: "美股:標普500/羅素 指數納入剔除事件分數(時間衰減)"
+    type: event
+    standardize: false
+    missing: 0
+    direction: 1
+    weight: 0.6
+    availability: [US]
+
+# =====================================================================
+# 風險旗標(非計分因子,於 output 層標示;雙面刃的指標放這裡,不放加分)
+# =====================================================================
+risk_flags:
+  passive_crowding:
+    desc: "ETF/被動基金合計持股佔流通比過高 → 贖回潮時重壓"
+    threshold_tw: 0.15
+    availability: [TW, US]
+  dividend_theme_dependence:
+    desc: "高度依賴單一高股息ETF題材 → regime 反轉風險"
+    availability: [TW]
+  branch_signal_noise:
+    desc: "分點訊號疑似隔日沖/對敲 → 籌碼訊號不可靠"
+    availability: [TW]

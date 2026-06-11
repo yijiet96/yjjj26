@@ -1,0 +1,30 @@
+# 核心資料處理
+pandas>=2.0
+numpy>=1.24
+scipy>=1.10
+pyarrow>=14.0          # parquet 儲存
+duckdb>=0.9            # 本地查詢
+
+# 統計 / 計量
+statsmodels>=0.14      # Fama-MacBeth、Newey-West
+scikit-learn>=1.3      # 選用:因子加權 / ML
+
+# 資料來源
+requests>=2.31
+yfinance>=0.2          # 美股價量
+FinMind>=1.6           # 台股法人/融資券/借券/財報
+python-dotenv>=1.0     # 讀取 API 金鑰
+
+# 新聞 / 社群輿情(每日自動化新增)
+feedparser>=6.0        # 免費 RSS 新聞 + Nitter 社群貼文抓取
+
+# LLM 分析(選用,擇一即可;兩者皆無金鑰時自動退回規則式分析,系統仍可運作)
+anthropic>=0.39           # 選用:Claude API → 設 ANTHROPIC_API_KEY
+google-generativeai>=0.8  # 選用:Gemini API → 設 GEMINI_API_KEY(Google AI Studio 有免費額度)
+
+# 視覺化與工具
+matplotlib>=3.7
+plotly>=5.18
+PyYAML>=6.0
+tqdm>=4.66             # 進度條
+pytest>=7.4            # 測試

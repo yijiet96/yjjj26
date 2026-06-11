@@ -1,0 +1,56 @@
+# =====================================================================
+# social_sources.yaml — 具市場影響力的社群意見領袖追蹤清單
+#
+# ⚠️ 紀律(同 CLAUDE.md 對籌碼/分點的警語):
+#   名人言論是「煙霧」,基本面才是「火」。社群訊號波動大、易被操弄、常事後諸葛,
+#   故僅作「短期事件傾斜」小幅疊加,權重低,且不可取代因子模型。
+#
+# 抓取方式(依可用性自動降級):
+#   1) X/Twitter API 金鑰(.env: X_BEARER_TOKEN)→ 最完整(需自備)
+#   2) Nitter RSS 實例(.env: NITTER_INSTANCE)→ 免費但實例常不穩
+#   3) 手動貼文檔 data/raw/social_posts.json → 你把想分析的貼文貼進去
+#   4) 以上皆無 → demo 範例貼文(僅展示流程)
+# =====================================================================
+
+settings:
+  lookback_hours: 48          # 只看近 48 小時貼文
+  max_posts_per_leader: 10
+  social_overlay_cap: 0.3     # 社群傾斜對綜合分數的最大影響(夾在 ±cap),刻意壓低
+
+leaders:
+  - handle: elonmusk
+    name: "Elon Musk"
+    weight: 0.9               # 影響力權重(0~1)
+    affects: [TSLA, US_mega_tech, crypto, DOGE]
+    note: "貼文常即時影響 TSLA 與加密貨幣;雜訊大,需折扣"
+  - handle: realDonaldTrump
+    name: "Donald Trump"
+    weight: 0.8
+    affects: [US_market, tariffs, energy, defense]
+    note: "政策/關稅言論影響整體市場與特定產業"
+  - handle: jimcramer
+    name: "Jim Cramer"
+    weight: 0.4
+    affects: [US_market]
+    note: "知名度高但勝率爭議大,權重低"
+  - handle: chamath
+    name: "Chamath Palihapitiya"
+    weight: 0.4
+    affects: [growth_tech, US_market]
+  - handle: CathieDWood
+    name: "Cathie Wood / ARK"
+    weight: 0.5
+    affects: [innovation_tech, US_market]
+  # 台股:可加入本地具影響力的財經意見領袖/官方帳號(自行擴充)
+  - handle: tw_market_official
+    name: "台股市場觀察(示意)"
+    weight: 0.3
+    affects: [TW_market, semiconductors]
+    note: "示意項目,請替換為你實際追蹤的可信來源"
+
+# 主題 → 受影響標的的對應(供 LLM 分析後映射回個股)
+theme_map:
+  semiconductors: [2330.TW, 2454.TW, NVDA, AMD]
+  US_mega_tech: [AAPL, MSFT, GOOGL, AMZN, META, NVDA]
+  energy: [XOM]
+  defense: []

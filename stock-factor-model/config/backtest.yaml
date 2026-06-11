@@ -1,0 +1,78 @@
+# =====================================================================
+# backtest.yaml — 回測與績效評估參數
+# =====================================================================
+
+period:
+  start: "2015-01-01"
+  end: "2024-12-31"
+  rebalance: monthly             # 月底再平衡
+  return_lag: 1                  # 因子用 t 期,報酬用 t+1 期(防前視偏誤)
+
+# ---------------------------------------------------------------------
+# 分組與投組建構
+# ---------------------------------------------------------------------
+portfolio:
+  quantiles: 10                  # 依綜合分數分10組(decile)
+  weighting: "equal"             # 組內等權;另可選 "value"(市值加權)
+  long_short: true               # 多前10% × 空後10%,衡量因子純收益
+  long_only_top_pct: 0.10        # 純做多版本:取前10%作為候選清單
+  max_position_pct: 0.05         # 單檔上限(實盤分散用)
+
+# ---------------------------------------------------------------------
+# 交易成本(台股、美股分開;務必計入,否則高估績效)
+# ---------------------------------------------------------------------
+costs:
+  TW:
+    commission_rate: 0.001425    # 手續費(買賣各一次)
+    commission_discount: 0.6     # 券商折讓(如 6 折)
+    tax_sell_rate: 0.003         # 證交稅(賣出)
+    slippage_bps: 10             # 滑價(基點)
+    price_limit_pct: 0.10        # 漲跌停 10%,觸及視為無法成交
+  US:
+    commission_rate: 0.0         # 多數券商零佣金
+    tax_sell_rate: 0.0
+    slippage_bps: 5
+
+# ---------------------------------------------------------------------
+# 因子有效性檢定
+# ---------------------------------------------------------------------
+factor_evaluation:
+  ic_method: "spearman"          # 等級相關 IC
+  report_ic_ir: true             # IC-IR = mean(IC) / std(IC)
+  fama_macbeth: true             # 逐期橫斷面迴歸
+  newey_west_lags: 6             # Newey-West 自相關修正落後期
+  vif_threshold: 5.0             # 多重共線性門檻
+  corr_threshold: 0.7            # 因子相關過高則擇一/正交化
+
+# ---------------------------------------------------------------------
+# 樣本外驗證(防 data snooping / 過度擬合)
+# ---------------------------------------------------------------------
+validation:
+  scheme: "walk_forward"         # 滾動視窗:權重只用過去資料決定
+  train_window_months: 36
+  test_window_months: 12
+  reoptimize: true
+
+# ---------------------------------------------------------------------
+# 績效指標(全部輸出,不可只看累積報酬)
+# ---------------------------------------------------------------------
+metrics:
+  - annual_return
+  - annual_volatility
+  - sharpe
+  - sortino
+  - max_drawdown
+  - calmar
+  - information_ratio
+  - win_rate
+  - turnover
+  - monotonicity            # 分組報酬單調性(因子區辨力的關鍵)
+
+# 無風險利率:2015-2024 橫跨零利率與升息循環,且台美差異大,單一固定值會扭曲夏普/Sortino。
+# 應使用「分市場、時變」序列;無法取得時退而求其次用各市場期間平均,並在報告註明此簡化。
+risk_free_rate:
+  mode: time_varying        # time_varying(建議)或 constant
+  source_TW: "台灣10年期公債殖利率或央行重貼現率(月頻)"
+  source_US: "US 3M T-Bill (DGS3MO) 或 13週國庫券(月頻)"
+  fallback_constant_TW: 0.012
+  fallback_constant_US: 0.020

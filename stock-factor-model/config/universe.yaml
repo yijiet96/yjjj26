@@ -1,0 +1,50 @@
+# =====================================================================
+# universe.yaml — 股票池定義與篩選規則
+# 所有篩選一律在「再平衡當日的 point-in-time 狀態」下判定,不可用今日資料回溯。
+# =====================================================================
+
+markets:
+  TW:
+    enabled: true
+    exchanges: [TWSE, TPEx]          # 上市 + 上櫃
+    index_benchmark: "^TWII"          # 相對強弱與 beta 用的大盤基準
+    currency: TWD
+  US:
+    enabled: true
+    exchanges: [NYSE, NASDAQ]
+    index_benchmark: "^GSPC"          # S&P 500
+    currency: USD
+
+# ---------------------------------------------------------------------
+# 流動性與資格過濾(剔除無法實際成交的標的)
+# ---------------------------------------------------------------------
+filters:
+  TW:
+    min_market_cap_twd: 2_000_000_000   # 最小市值 20 億台幣
+    min_avg_dollar_volume_twd: 20_000_000  # 近20日均日成交金額門檻
+    min_listing_months: 12               # 對齊最長回溯期(動能/52週高/Beta 需約252交易日≈12個月);未滿者長回溯因子無法計算
+    exclude_full_delivery: true          # 排除全額交割股
+    exclude_suspended: true              # 排除暫停交易
+  US:
+    min_market_cap_usd: 100_000_000      # 最小市值 1 億美元
+    min_price_usd: 5                     # 排除雞蛋水餃股(penny stock)
+    min_avg_dollar_volume_usd: 1_000_000
+    min_listing_months: 12               # 同台股:對齊最長回溯期約12個月
+    exclude_otc: true                    # 只保留主板,排除 OTC/粉單
+
+# ---------------------------------------------------------------------
+# 產業處理:不排除任何產業,改在 stats 層做產業中性化。
+# 金融業財報結構特殊(無一般營收/毛利概念),部分基本面因子對其設為缺漏。
+# ---------------------------------------------------------------------
+sector:
+  classification_tw: "TEJ_industry"     # 台股產業分類來源(視資料源調整)
+  classification_us: "GICS_sector"
+  financials_special_handling: true     # 金融業:價值用 P/B、P/E;略過毛利率類因子
+
+# ---------------------------------------------------------------------
+# 生存者偏誤防線:回測股票池「必須」納入已下市/下櫃公司。
+# 上線實盤選股時才只看當前存續標的。
+# ---------------------------------------------------------------------
+survivorship:
+  include_delisted_in_backtest: true
+  delisted_return_on_exit: "last_traded"  # 下市當日以最後成交價計報酬後出場

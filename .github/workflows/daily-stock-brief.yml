@@ -1,0 +1,63 @@
+name: 每日選股研究簡報 (Daily Stock Brief)
+
+# 100% 自動:每個交易日依排程自行執行,產出簡報、寄信、並把報告存成 artifact。
+# 不下單、不碰錢 —— 只產出研究候選清單供你人工複核。
+on:
+  schedule:
+    # UTC 時間。台股收盤約 05:30 UTC、美股收盤約 21:00 UTC。
+    # 這裡設台北時間每日 14:30(= 06:30 UTC)跑台股盤後;另設 06:00 台北跑美股盤後。
+    - cron: "30 6 * * 1-5"    # 台北 14:30,週一~週五(台股盤後)
+    - cron: "0 22 * * 1-5"    # 台北 06:00,涵蓋美股前一日收盤
+  workflow_dispatch:          # 也可在 GitHub 網頁手動觸發
+    inputs:
+      mode:
+        description: "資料模式 demo 或 live"
+        default: "live"
+        type: choice
+        options: [live, demo]
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stock-factor-model
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安裝套件
+        run: pip install -r requirements.txt
+
+      - name: 跑每日選股 + 寄信
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NITTER_INSTANCE: ${{ secrets.NITTER_INSTANCE }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          REPORT_TO: ${{ secrets.REPORT_TO }}
+        run: |
+          MODE="${{ github.event.inputs.mode || 'live' }}"
+          if [ "$MODE" = "demo" ]; then
+            python run.py daily --email
+          else
+            python run.py daily --live --email
+          fi
+
+      - name: 上傳報告 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-brief
+          path: stock-factor-model/reports/daily_brief_*.*
+          retention-days: 30
