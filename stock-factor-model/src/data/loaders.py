@@ -115,6 +115,14 @@ def load_bundle(start: str, end: str, *, demo: bool = True,
             funds_list.append(providers.fetch_us_fundamentals(us_top))
     fundamentals = pd.concat(funds_list, ignore_index=True) if funds_list else pd.DataFrame()
 
+    # 美股清單來源(NASDAQ 目錄)無產業別 → 用財報帶回的 sector 補上,讓有財報者能做產業中性化
+    if not fundamentals.empty and "sector" in fundamentals.columns:
+        smap = (fundamentals.dropna(subset=["sector"])
+                .set_index("ticker")["sector"].to_dict())
+        if smap:
+            universe["sector"] = universe.apply(
+                lambda r: smap.get(r["ticker"], r["sector"]), axis=1)
+
     return DataBundle(
         universe=universe,
         prices=prices,
