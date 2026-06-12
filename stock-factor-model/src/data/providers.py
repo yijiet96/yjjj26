@@ -22,27 +22,40 @@ log = get_logger("data")
 # 美股:yfinance
 # ===========================================================================
 @retry(times=4)
-def fetch_us_prices(tickers: list[str], start: str, end: str) -> pd.DataFrame:
+def _yf_download_batch(tickers: list[str], start: str, end: str):
     import yfinance as yf
-    log.info("yfinance 下載 %d 檔美股價量 %s~%s", len(tickers), start, end)
-    raw = yf.download(tickers, start=start, end=end, auto_adjust=False,
-                      group_by="ticker", progress=False, threads=True)
+    return yf.download(tickers, start=start, end=end, auto_adjust=False,
+                       group_by="ticker", progress=False, threads=True)
+
+
+def fetch_us_prices(tickers: list[str], start: str, end: str,
+                    batch_size: int = 200) -> pd.DataFrame:
+    """分批下載(大型股票池友善);個別批次失敗會跳過,不中斷整體。"""
+    log.info("yfinance 下載 %d 檔美股價量 %s~%s(每批 %d)",
+             len(tickers), start, end, batch_size)
     frames = []
-    for tk in tickers:
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i + batch_size]
         try:
-            sub = raw[tk] if isinstance(raw.columns, pd.MultiIndex) else raw
-        except KeyError:
+            raw = _yf_download_batch(batch, start, end)
+        except Exception as e:  # noqa: BLE001
+            log.warning("批次 %d 下載失敗,跳過:%s", i // batch_size, e)
             continue
-        sub = sub.dropna(how="all")
-        if sub.empty:
-            continue
-        frames.append(pd.DataFrame({
-            "date": sub.index, "market": "US", "ticker": tk,
-            "open": sub["Open"].values, "high": sub["High"].values,
-            "low": sub["Low"].values, "close": sub["Close"].values,
-            "adj_close": sub.get("Adj Close", sub["Close"]).values,
-            "volume": sub["Volume"].values,
-        }))
+        for tk in batch:
+            try:
+                sub = raw[tk] if isinstance(raw.columns, pd.MultiIndex) else raw
+            except KeyError:
+                continue
+            sub = sub.dropna(how="all")
+            if sub.empty:
+                continue
+            frames.append(pd.DataFrame({
+                "date": sub.index, "market": "US", "ticker": tk,
+                "open": sub["Open"].values, "high": sub["High"].values,
+                "low": sub["Low"].values, "close": sub["Close"].values,
+                "adj_close": sub.get("Adj Close", sub["Close"]).values,
+                "volume": sub["Volume"].values,
+            }))
     if not frames:
         raise RuntimeError("yfinance 未取得任何美股資料")
     df = pd.concat(frames, ignore_index=True)
@@ -62,7 +75,9 @@ def fetch_us_fundamentals(tickers: list[str]) -> pd.DataFrame:
             continue
         rows.append({
             "ticker": tk, "market": "US",
-            "announce_date": pd.Timestamp.today().normalize(),
+            # yfinance .info 為「當前快照」,無真實申報日;以典型財報延遲(約45天前)
+            # 標記,確保當期可用且近似實際公布時點。回測用另有正確日期的資料,不受此近似影響。
+            "announce_date": (pd.Timestamp.today() - pd.Timedelta(days=45)).normalize(),
             "fiscal_period": "latest", "sector": info.get("sector", "Unknown"),
             "eps_ttm": info.get("trailingEps"),
             "book_value_ps": info.get("bookValue"),

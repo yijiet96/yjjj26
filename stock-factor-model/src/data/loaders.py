@@ -66,29 +66,99 @@ def load_bundle(start: str, end: str, *, demo: bool = True,
 
     # ---- live --------------------------------------------------------------
     from . import providers
-    prices, funds, events = [], [], pd.DataFrame()
-    univ_rows = []
+    from .universe_build import build_universe
+    s = load_settings()
+    live_cfg = s.universe.get("live", {})
+    caps = live_cfg.get("max_symbols", {})
+    batch = live_cfg.get("batch_size", 200)
+    fund_limit = live_cfg.get("fundamentals_limit", 400)
+
+    # 1) 股票池:明確指定則用之,否則動態建立全市場
+    if us_tickers or tw_tickers:
+        rows = ([{"market": "US", "ticker": t, "name": t, "sector": "Unknown"} for t in (us_tickers or [])]
+                + [{"market": "TW", "ticker": t, "name": t, "sector": "Unknown"} for t in (tw_tickers or [])])
+        universe = pd.DataFrame(rows)
+    else:
+        universe = build_universe(markets, caps)
+    universe = universe[universe.market.isin(markets)].reset_index(drop=True)
+    log.info("live 股票池:%s", universe.groupby("market").size().to_dict())
+
+    prices_list, funds_list = [], []
     chips_tw = pd.DataFrame()
 
     if "US" in markets:
-        us = us_tickers or _default_us_tickers()
-        prices.append(providers.fetch_us_prices(us, start, end))
-        funds.append(providers.fetch_us_fundamentals(us))
-        univ_rows += [{"market": "US", "ticker": t, "name": t, "sector": "Unknown"} for t in us]
+        us = universe[universe.market == "US"]["ticker"].tolist()
+        if us:
+            prices_list.append(providers.fetch_us_prices(us, start, end, batch_size=batch))
     if "TW" in markets:
-        tw = tw_tickers or _default_tw_tickers()
-        prices.append(providers.fetch_tw_prices(tw, start, end))
-        chips_tw = providers.fetch_tw_chips(tw, start, end)
-        univ_rows += [{"market": "TW", "ticker": t, "name": t, "sector": "Unknown"} for t in tw]
+        tw = universe[universe.market == "TW"]["ticker"].tolist()
+        if tw:
+            try:
+                prices_list.append(providers.fetch_tw_prices(tw, start, end))
+            except Exception as e:  # noqa: BLE001  FinMind 額度/網路問題不應中斷整體
+                log.warning("台股價量抓取失敗(可能 FinMind 免費額度):%s", e)
+            try:
+                chips_tw = providers.fetch_tw_chips(tw, start, end)
+            except Exception as e:  # noqa: BLE001
+                log.warning("台股籌碼抓取失敗:%s", e)
+
+    prices = pd.concat(prices_list, ignore_index=True) if prices_list else pd.DataFrame()
+    # 2) 流動性過濾:剔除價格過低/成交量過低(無法實際成交)的標的
+    prices = _apply_liquidity_filter(prices, s.universe.get("filters", {}))
+    kept = set(prices["ticker"].unique()) if not prices.empty else set()
+    universe = universe[universe.ticker.isin(kept)].reset_index(drop=True)
+
+    # 3) 美股財報:逐檔較慢,依近 20 日成交額排序只抓前段,控制執行時間
+    if "US" in markets and not prices.empty:
+        us_top = _rank_by_dollar_volume(prices, "US", fund_limit)
+        if us_top:
+            funds_list.append(providers.fetch_us_fundamentals(us_top))
+    fundamentals = pd.concat(funds_list, ignore_index=True) if funds_list else pd.DataFrame()
 
     return DataBundle(
-        universe=pd.DataFrame(univ_rows),
-        prices=pd.concat(prices, ignore_index=True) if prices else pd.DataFrame(),
-        fundamentals=pd.concat(funds, ignore_index=True) if funds else pd.DataFrame(),
+        universe=universe,
+        prices=prices,
+        fundamentals=fundamentals,
         chips_tw=chips_tw,
-        index_events=events,
+        index_events=pd.DataFrame(columns=["ticker", "market", "event", "effective_date"]),
         mode="live",
     )
+
+
+def _liquidity_stats(g: pd.DataFrame) -> pd.DataFrame:
+    """每檔:最新價、近 20 日平均成交金額(dvol)、全期可用交易日數(n)。"""
+    g = g.sort_values("date")
+    total = g.groupby("ticker")["close"].count().rename("n")
+    last20 = g.groupby("ticker").tail(20).copy()
+    last20["dv"] = last20["close"] * last20["volume"]
+    agg = last20.groupby("ticker").agg(price=("close", "last"), dvol=("dv", "mean"))
+    return agg.join(total)
+
+
+def _apply_liquidity_filter(prices: pd.DataFrame, filters: dict) -> pd.DataFrame:
+    if prices.empty:
+        return prices
+    keep = []
+    for mkt, g in prices.groupby("market"):
+        f = filters.get(mkt, {})
+        stats = _liquidity_stats(g)
+        min_price = f.get("min_price_usd", 0) if mkt == "US" else 0
+        min_dvol = (f.get("min_avg_dollar_volume_usd", 0) if mkt == "US"
+                    else f.get("min_avg_dollar_volume_twd", 0))
+        ok = stats[(stats["price"] >= min_price) & (stats["dvol"] >= min_dvol)
+                   & (stats["n"] >= 30)].index
+        keep += list(ok)
+    out = prices[prices.ticker.isin(keep)].reset_index(drop=True)
+    log.info("流動性過濾:%d → %d 檔", prices.ticker.nunique(), out.ticker.nunique())
+    return out
+
+
+def _rank_by_dollar_volume(prices: pd.DataFrame, market: str, top_n: int) -> list[str]:
+    g = prices[prices.market == market]
+    if g.empty:
+        return []
+    stats = _liquidity_stats(g).sort_values("dvol", ascending=False)
+    return stats.head(top_n).index.tolist()
 
 
 def _default_us_tickers() -> list[str]:

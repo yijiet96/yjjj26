@@ -48,3 +48,19 @@ sector:
 survivorship:
   include_delisted_in_backtest: true
   delisted_return_on_exit: "last_traded"  # 下市當日以最後成交價計報酬後出場
+
+# ---------------------------------------------------------------------
+# live 模式:全市場動態股票池(見 src/data/universe_build.py)
+# 股票「清單」來自免金鑰官方開放資料(美:NASDAQ Trader;台:TWSE/TPEx 開放資料)。
+# 但台股後續價量/籌碼仍需 FinMind —— 免費額度撐不起上千檔每日抓取,故 TW 上限設得保守。
+# 有付費 FinMind 方案時,調高 max_symbols.TW 即可變更廣。
+# ---------------------------------------------------------------------
+live:
+  max_symbols:
+    US: null          # null = 全市場(NYSE+NASDAQ+AMEX 普通股,約 6000 檔),流動性過濾後留下可成交者。
+                      #   美股無「抓取前」的成交量資料,故設數字只會取到字母序的任意子集 → 想要廣就留 null。
+                      #   若要加速,改用 backtest 或縮短 fundamentals_limit。
+    TW: 250           # 台股依「當日成交金額」排序取前段(TWSE 開放資料有成交額,故此上限有意義)。
+                      #   受 FinMind 免費額度限制設保守值;有付費方案可調高至全市場(約 1800)。
+  fundamentals_limit: 400   # 美股財報(yfinance 逐檔較慢)只抓「成交額前段」這麼多檔,控制執行時間
+  batch_size: 200           # yfinance 價量分批下載每批檔數
