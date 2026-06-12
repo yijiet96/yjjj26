@@ -15,6 +15,10 @@ on:
         default: "live"
         type: choice
         options: [live, demo]
+      markets:
+        description: "限定市場(留空=全部),例如 US 或 TW 或 TW,US"
+        default: ""
+        type: string
 
 jobs:
   brief:
@@ -48,11 +52,12 @@ jobs:
           REPORT_TO: ${{ secrets.REPORT_TO }}
         run: |
           MODE="${{ github.event.inputs.mode || 'live' }}"
-          if [ "$MODE" = "demo" ]; then
-            python run.py daily --email
-          else
-            python run.py daily --live --email
-          fi
+          MARKETS="${{ github.event.inputs.markets }}"
+          ARGS="--email"
+          [ "$MODE" != "demo" ] && ARGS="$ARGS --live"
+          [ -n "$MARKETS" ] && ARGS="$ARGS --markets $MARKETS"
+          echo "Running: python run.py daily $ARGS"
+          python run.py daily $ARGS
 
       - name: 上傳報告 artifact
         if: always()
